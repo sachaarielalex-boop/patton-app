@@ -306,72 +306,53 @@ def _render_edit_fields(fields, filename=""):
     with c14:
         fields["parking_rate"] = st.text_input("Monthly Rate", value=_v("parking_rate"), key=pfx + "_pm")
 
-    # ── Generate ─────────────────────────────────────────
+    # ── Generate & Download ─────────────────────────────
     st.markdown("---")
-    # Generate button - creates docx immediately without rerun
-    gen_col1, gen_col2 = st.columns([3, 1])
-    with gen_col1:
-        generate_clicked = st.button("Generate Lease Abstract", type="primary", use_container_width=True, key=pfx + "_gen")
-
-    if generate_clicked:
-        try:
-            with st.spinner("Generating abstract..."):
-                docx_bytes = _generate_abstract_docx(fields)
-            fname = "LEASE_ABSTRACT_{}.docx".format(
-                fields.get("tenant_name", "TENANT").replace(" ", "_").upper()[:30]
-            )
-            st.session_state["_generated_docx"] = docx_bytes
-            st.session_state["_generated_fname"] = fname
-            st.session_state["_generated_fields"] = dict(fields)
-        except Exception as e:
-            st.error("Error generating abstract: {}".format(e))
-
-    # Show download + tenant folder if generated
-    if st.session_state.get("_generated_docx"):
-        docx_bytes = st.session_state["_generated_docx"]
-        fname = st.session_state.get("_generated_fname", "lease_abstract.docx")
-        gen_fields = st.session_state.get("_generated_fields", fields)
-
-        st.success("Abstract generated!")
-        st.download_button(
-            "Download Lease Abstract (.docx)", docx_bytes, fname,
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            use_container_width=True, key=pfx + "_dl",
+    try:
+        docx_bytes = _generate_abstract_docx(fields)
+        fname = "LEASE_ABSTRACT_{}.docx".format(
+            fields.get("tenant_name", "TENANT").replace(" ", "_").upper()[:30]
         )
+        st.download_button(
+            "Generate & Download Lease Abstract (.docx)", docx_bytes, fname,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            use_container_width=True, key=pfx + "_dl", type="primary",
+        )
+    except Exception as e:
+        st.error("Error generating abstract: {}".format(e))
 
-        # Add to Tenant Folder option
-        st.markdown("---")
-        st.markdown("##### Add to Tenant Folder")
-        tenant_name = gen_fields.get("tenant_name", "").strip() or "Unknown Tenant"
+    # Add to Tenant Folder option
+    st.markdown("---")
+    st.markdown("##### Add to Tenant Folder")
+    tenant_name = fields.get("tenant_name", "").strip() or "Unknown Tenant"
 
-        folders = shared_db.get("tenant_folders", {})
-        folder_names = list(folders.keys())
+    folders = shared_db.get("tenant_folders", {})
+    folder_names = list(folders.keys())
 
-        fc1, fc2 = st.columns(2)
-        with fc1:
-            if folder_names:
-                selected_folder = st.selectbox("Choose existing folder", [""] + folder_names, key=pfx + "_tf_sel")
-            else:
-                selected_folder = ""
-                st.markdown('<div style="font-size:0.78rem;color:var(--text-muted);">No folders yet</div>', unsafe_allow_html=True)
-        with fc2:
-            new_folder = st.text_input("Or create new folder", value=tenant_name, key=pfx + "_tf_new")
+    fc1, fc2 = st.columns(2)
+    with fc1:
+        if folder_names:
+            selected_folder = st.selectbox("Choose existing folder", [""] + folder_names, key=pfx + "_tf_sel")
+        else:
+            selected_folder = ""
+            st.markdown('<div style="font-size:0.78rem;color:var(--text-muted);">No folders yet</div>', unsafe_allow_html=True)
+    with fc2:
+        new_folder = st.text_input("Or create new folder", value=tenant_name, key=pfx + "_tf_new")
 
-        folder_target = selected_folder if selected_folder else new_folder
-        if folder_target and st.button("Save to '{}'".format(folder_target), key=pfx + "_tf_save", type="primary"):
-            if folder_target not in folders:
-                folders[folder_target] = []
-            doc_entry = {
-                "type": "Lease Abstract",
-                "tenant": tenant_name,
-                "filename": fname,
-                "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "fields": gen_fields,
-            }
-            folders[folder_target].append(doc_entry)
-            shared_db.put("tenant_folders", folders)
-            st.success("Saved to tenant folder: {}".format(folder_target))
-            st.session_state["_generated_docx"] = None
+    folder_target = selected_folder if selected_folder else new_folder
+    if folder_target and st.button("Save to '{}'".format(folder_target), key=pfx + "_tf_save", type="primary"):
+        if folder_target not in folders:
+            folders[folder_target] = []
+        doc_entry = {
+            "type": "Lease Abstract",
+            "tenant": tenant_name,
+            "filename": fname if "fname" in dir() else "abstract.docx",
+            "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "fields": dict(fields),
+        }
+        folders[folder_target].append(doc_entry)
+        shared_db.put("tenant_folders", folders)
+        st.success("Saved to tenant folder: {}".format(folder_target))
 
 
 # ═══════════════════════════════════════════════════════
