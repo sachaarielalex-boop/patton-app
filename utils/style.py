@@ -139,13 +139,38 @@ iframe { border: none !important; }
 /* ── Sidebar ───────────────────────────────── */
 section[data-testid="stSidebar"] {
     background: var(--bg-sidebar) !important;
-    min-width: 280px !important;
+    min-width: 260px !important;
+    max-width: 300px !important;
     border-right: 1px solid rgba(255,255,255,0.06);
 }
 section[data-testid="stSidebar"] > div { padding-top: 0.5rem; }
 section[data-testid="stSidebar"] label,
 section[data-testid="stSidebar"] .stMarkdown p,
-section[data-testid="stSidebar"] .stMarkdown span { color: var(--text-muted) !important; }
+section[data-testid="stSidebar"] .stMarkdown span {
+    color: var(--text-muted) !important;
+    font-size: 0.75rem !important;
+    line-height: 1.4 !important;
+}
+section[data-testid="stSidebar"] .stMarkdown h1,
+section[data-testid="stSidebar"] .stMarkdown h2,
+section[data-testid="stSidebar"] .stMarkdown h3,
+section[data-testid="stSidebar"] .stMarkdown h4,
+section[data-testid="stSidebar"] .stMarkdown h5 {
+    font-size: 0.72rem !important;
+    font-weight: 700 !important;
+    color: rgba(255,255,255,0.6) !important;
+    letter-spacing: 1px !important;
+    text-transform: uppercase !important;
+    margin: 0.5rem 0 0.3rem !important;
+}
+section[data-testid="stSidebar"] .stMarkdown div {
+    font-size: 0.72rem !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+}
+section[data-testid="stSidebar"] .element-container {
+    margin-bottom: 0.2rem !important;
+}
 section[data-testid="stSidebar"] .stTextInput input {
     background: rgba(255,255,255,0.95) !important;
     border: 1px solid rgba(255,255,255,0.2) !important;

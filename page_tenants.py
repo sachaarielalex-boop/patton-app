@@ -57,6 +57,20 @@ def render_tenants_page():
 
     st.markdown("---")
 
+    # Quick link to Lease Abstract
+    st.markdown("##### Quick Actions")
+    qa1, qa2 = st.columns(2)
+    with qa1:
+        if st.button("Go to Lease Abstract", key="ten_go_abstract", use_container_width=True, type="primary"):
+            st.session_state["app_mode"] = "abstract"
+            st.rerun()
+    with qa2:
+        if st.button("Go to Lease Proposal", key="ten_go_proposal", use_container_width=True):
+            st.session_state["app_mode"] = "proposal"
+            st.rerun()
+
+    st.markdown("---")
+
     if not folders and not scan_history:
         st.markdown(
             '<div class="card" style="text-align:center;padding:3rem;">'
@@ -81,7 +95,7 @@ def render_tenants_page():
                     )
                 else:
                     for i, doc in enumerate(docs):
-                        dc1, dc2 = st.columns([4, 1])
+                        dc1, dc2, dc3 = st.columns([3, 1, 1])
                         with dc1:
                             st.markdown(
                                 '<div style="padding:0.5rem 0;border-bottom:1px solid var(--border);">'
@@ -91,6 +105,19 @@ def render_tenants_page():
                                 unsafe_allow_html=True,
                             )
                         with dc2:
+                            # Re-generate and download the abstract
+                            if doc.get("fields") and doc.get("type") in ("Lease Abstract", "Lease Scan"):
+                                try:
+                                    from page_abstract import _generate_abstract_docx
+                                    docx_bytes = _generate_abstract_docx(doc["fields"])
+                                    st.download_button(
+                                        "Download", docx_bytes, doc["filename"],
+                                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                        key="ten_dl_{}_{}".format(folder_name[:10], i),
+                                    )
+                                except Exception:
+                                    st.markdown('<div style="font-size:0.7rem;color:var(--text-muted);">-</div>', unsafe_allow_html=True)
+                        with dc3:
                             if st.button("Remove", key="ten_rm_{}_{}".format(folder_name[:10], i)):
                                 docs.pop(i)
                                 shared_db.put("tenant_folders", folders)

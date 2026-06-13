@@ -308,11 +308,12 @@ def _render_edit_fields(fields, filename=""):
 
     # ── Generate & Download ─────────────────────────────
     st.markdown("---")
+    tenant_name = fields.get("tenant_name", "").strip() or "Unknown Tenant"
+    fname = "LEASE_ABSTRACT_{}.docx".format(
+        tenant_name.replace(" ", "_").upper()[:30]
+    )
     try:
         docx_bytes = _generate_abstract_docx(fields)
-        fname = "LEASE_ABSTRACT_{}.docx".format(
-            fields.get("tenant_name", "TENANT").replace(" ", "_").upper()[:30]
-        )
         st.download_button(
             "Generate & Download Lease Abstract (.docx)", docx_bytes, fname,
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -320,11 +321,11 @@ def _render_edit_fields(fields, filename=""):
         )
     except Exception as e:
         st.error("Error generating abstract: {}".format(e))
+        docx_bytes = None
 
     # Add to Tenant Folder option
     st.markdown("---")
     st.markdown("##### Add to Tenant Folder")
-    tenant_name = fields.get("tenant_name", "").strip() or "Unknown Tenant"
 
     folders = shared_db.get("tenant_folders", {})
     folder_names = list(folders.keys())
@@ -346,10 +347,15 @@ def _render_edit_fields(fields, filename=""):
         doc_entry = {
             "type": "Lease Abstract",
             "tenant": tenant_name,
-            "filename": fname if "fname" in dir() else "abstract.docx",
+            "filename": fname,
             "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
             "fields": dict(fields),
         }
+        # Store docx bytes in session for download from tenant folder
+        if docx_bytes:
+            if "_tenant_docx" not in st.session_state:
+                st.session_state["_tenant_docx"] = {}
+            st.session_state["_tenant_docx"][fname] = docx_bytes
         folders[folder_target].append(doc_entry)
         shared_db.put("tenant_folders", folders)
         st.success("Saved to tenant folder: {}".format(folder_target))
