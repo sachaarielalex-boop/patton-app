@@ -330,32 +330,26 @@ def _extract_pdf(uploaded_file):
     combined = "\n".join(text_parts)
     # If no text found, try OCR
     if len(combined.strip()) < 50:
-        st.info("No text layer detected. Running OCR...")
+        st.info("No text layer detected. Running OCR on key pages...")
         try:
-            import easyocr
-            import warnings
-            warnings.filterwarnings("ignore")
-            reader = easyocr.Reader(["en"], gpu=False, verbose=False)
+            import pytesseract
+            from PIL import Image
             doc = fitz.open(stream=pdf_bytes, filetype="pdf")
             total_pages = len(doc)
-            # Smart page selection: first 5 (key terms) + last 2 (signatures)
             page_indices = list(range(min(5, total_pages)))
             if total_pages > 7:
                 page_indices += list(range(total_pages - 2, total_pages))
-            # Remove duplicates, keep order
             seen = set()
             page_indices = [p for p in page_indices if not (p in seen or seen.add(p))]
             ocr_parts = []
             progress = st.progress(0)
             status = st.empty()
             for idx, i in enumerate(page_indices):
-                status.text("OCR page {}/{}...".format(idx + 1, len(page_indices)))
+                status.text("OCR page {} of {} (page {} of {})...".format(idx + 1, len(page_indices), i + 1, total_pages))
                 page = doc[i]
-                # Lower DPI = faster OCR (100 DPI is enough for text)
-                pix = page.get_pixmap(dpi=100)
-                img_bytes = pix.tobytes("png")
-                results = reader.readtext(img_bytes, detail=0, paragraph=True)
-                page_text = "\n".join(results)
+                pix = page.get_pixmap(dpi=150)
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                page_text = pytesseract.image_to_string(img)
                 ocr_parts.append(page_text)
                 progress.progress((idx + 1) / len(page_indices))
             doc.close()
@@ -366,7 +360,7 @@ def _extract_pdf(uploaded_file):
                 len(combined), len(page_indices)
             ))
         except ImportError:
-            st.warning("easyocr not installed. Run: pip3 install easyocr")
+            st.warning("OCR not available. Install pytesseract or easyocr for scanned PDF support.")
         except Exception as e:
             st.error("OCR failed: {}".format(str(e)))
 
