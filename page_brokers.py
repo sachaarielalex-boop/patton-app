@@ -15,7 +15,7 @@ def _load_brokers():
     contacts = []
 
     # Brokers list
-    path1 = "/Users/sachaariel/Downloads/brokers_final_clean_2 (3).xlsx"
+    path1 = os.path.join(os.path.dirname(__file__), "brokers_data.xlsx")
     if os.path.exists(path1):
         wb = openpyxl.load_workbook(path1, data_only=True)
 
@@ -66,7 +66,7 @@ def _load_brokers():
                 })
 
     # Coral Gables Office Lease contacts
-    path2 = "/Users/sachaariel/Downloads/coral_gables_office_lease (1).xlsx"
+    path2 = os.path.join(os.path.dirname(__file__), "coral_gables_data.xlsx")
     if os.path.exists(path2):
         wb2 = openpyxl.load_workbook(path2, data_only=True)
         ws2 = wb2[wb2.sheetnames[0]]
