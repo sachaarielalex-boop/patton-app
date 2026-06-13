@@ -3,6 +3,7 @@ import streamlit as st
 import os
 import io
 import datetime
+import threading
 import shared_db
 
 
@@ -114,6 +115,41 @@ def render_abstract_page():
         _render_edit_fields(fields, loaded["filename"])
         return
 
+    # ── Background scan status ─────────────────────────
+    bg = st.session_state.get("_bg_scan")
+    if bg and bg.get("done"):
+        st.success("Scan complete: **{}** — click below to view results.".format(bg.get("filename", "")))
+        if st.button("View Scan Results", type="primary", key="abs_view_bg"):
+            st.session_state["_bg_scan_show"] = True
+            st.rerun()
+    elif bg and not bg.get("done"):
+        st.info("Scanning **{}** in background... You can use other sections and come back.".format(bg.get("filename", "")))
+        if st.button("Refresh Status", key="abs_refresh_bg"):
+            st.rerun()
+
+    # Show background scan results
+    if st.session_state.pop("_bg_scan_show", False) and bg and bg.get("done"):
+        pdf_text = bg.get("text", "")
+        page_images = bg.get("images", [])
+        filename = bg.get("filename", "scan.pdf")
+        st.session_state["_bg_scan"] = None  # Clear
+        has_text = pdf_text and len(pdf_text.strip()) > 50
+        if has_text:
+            st.success("Text extracted ({} chars). Auto-parsing lease terms...".format(len(pdf_text)))
+            with st.expander("Raw Extracted Text", expanded=False):
+                st.text_area("", pdf_text, height=300, key="abs_raw_text_bg")
+            fields = _parse_lease_fields(pdf_text)
+            _add_to_scan_history(fields, filename, page_images)
+        else:
+            st.warning("No text extracted. Fill in fields manually.")
+            if page_images:
+                with st.expander("Page Previews ({} pages)".format(len(page_images)), expanded=True):
+                    for i, img in enumerate(page_images):
+                        st.image(img, caption="Page {}".format(i + 1), use_container_width=True)
+            fields = {}
+        _render_edit_fields(fields, filename)
+        return
+
     uploaded = st.file_uploader(
         "Drop your scanned lease PDF here",
         type=["pdf"],
@@ -131,11 +167,13 @@ def render_abstract_page():
         )
         return
 
-    # ── Extract text ─────────────────────────────────────
-    st.markdown("---")
-    with st.spinner("Extracting text from PDF..."):
-        pdf_text, page_images = _extract_pdf(uploaded)
+    # ── Extract: try fast text first, background OCR if needed ──
+    pdf_bytes = uploaded.read()
+    uploaded.seek(0)
+    filename = uploaded.name
 
+    # Quick text extraction (no OCR)
+    pdf_text, page_images = _extract_pdf_text_only(pdf_bytes)
     has_text = pdf_text and len(pdf_text.strip()) > 50
 
     if has_text:
@@ -143,17 +181,30 @@ def render_abstract_page():
         with st.expander("Raw Extracted Text", expanded=False):
             st.text_area("", pdf_text, height=300, key="abs_raw_text")
         fields = _parse_lease_fields(pdf_text)
-        # Auto-save to scan history with page images
-        _add_to_scan_history(fields, uploaded.name, page_images)
+        _add_to_scan_history(fields, filename, page_images)
+        _render_edit_fields(fields, filename)
     else:
-        st.warning("Scanned PDF detected (no text layer). Showing page previews for manual entry.")
+        # Need OCR — launch in background
+        st.session_state["_bg_scan"] = {"filename": filename, "done": False, "text": "", "images": []}
+        _bg_data = st.session_state["_bg_scan"]
+        _bg_bytes = pdf_bytes
+
+        def _run_bg_ocr(data, raw_bytes):
+            try:
+                text, imgs = _extract_pdf_with_ocr(raw_bytes)
+                data["text"] = text
+                data["images"] = imgs
+            except Exception as e:
+                data["error"] = str(e)
+            data["done"] = True
+
+        t = threading.Thread(target=_run_bg_ocr, args=(_bg_data, _bg_bytes), daemon=True)
+        t.start()
+        st.info("No text layer detected. **OCR started in background** — you can navigate to other sections. Come back to see results.")
         if page_images:
-            with st.expander("Page Previews ({} pages)".format(len(page_images)), expanded=True):
+            with st.expander("Page Previews", expanded=False):
                 for i, img in enumerate(page_images):
                     st.image(img, caption="Page {}".format(i + 1), use_container_width=True)
-        fields = {}
-
-    _render_edit_fields(fields, uploaded.name if uploaded else "manual")
 
 
 def _render_edit_fields(fields, filename=""):
@@ -304,14 +355,12 @@ def _render_edit_fields(fields, filename=""):
 # PDF extraction
 # ═══════════════════════════════════════════════════════
 
-def _extract_pdf(uploaded_file):
-    """Extract text + page images from PDF. Uses OCR for scanned PDFs."""
+def _extract_pdf_text_only(pdf_bytes):
+    """Fast text extraction only (no OCR). Returns (text, page_images)."""
     try:
         import fitz
     except ImportError:
-        st.error("PyMuPDF not installed. Run: pip3 install PyMuPDF")
         return "", []
-    pdf_bytes = uploaded_file.read()
     text_parts = []
     images = []
     try:
@@ -323,18 +372,29 @@ def _extract_pdf(uploaded_file):
                 pix = page.get_pixmap(matrix=mat)
                 images.append(pix.tobytes("png"))
         doc.close()
-    except Exception as e:
-        st.error("Error reading PDF: {}".format(str(e)))
+    except Exception:
         return "", []
+    return "\n".join(text_parts), images
+
+
+def _extract_pdf_with_ocr(pdf_bytes):
+    """Full extraction with OCR fallback (runs in background thread)."""
+    import fitz
+    text_parts = []
+    images = []
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    for i, page in enumerate(doc):
+        text_parts.append(page.get_text())
+        if i < 5:
+            mat = fitz.Matrix(1.5, 1.5)
+            pix = page.get_pixmap(matrix=mat)
+            images.append(pix.tobytes("png"))
 
     combined = "\n".join(text_parts)
-    # If no text found, try OCR
     if len(combined.strip()) < 50:
-        st.info("No text layer detected. Running OCR on key pages...")
         try:
             import pytesseract
-            from PIL import Image
-            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            from PIL import Image as PILImage
             total_pages = len(doc)
             page_indices = list(range(min(5, total_pages)))
             if total_pages > 7:
@@ -342,28 +402,18 @@ def _extract_pdf(uploaded_file):
             seen = set()
             page_indices = [p for p in page_indices if not (p in seen or seen.add(p))]
             ocr_parts = []
-            progress = st.progress(0)
-            status = st.empty()
-            for idx, i in enumerate(page_indices):
-                status.text("OCR page {} of {} (page {} of {})...".format(idx + 1, len(page_indices), i + 1, total_pages))
+            for i in page_indices:
                 page = doc[i]
                 pix = page.get_pixmap(dpi=150)
-                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                img = PILImage.frombytes("RGB", [pix.width, pix.height], pix.samples)
                 page_text = pytesseract.image_to_string(img)
                 ocr_parts.append(page_text)
-                progress.progress((idx + 1) / len(page_indices))
-            doc.close()
-            progress.empty()
-            status.empty()
             combined = "\n\n".join(ocr_parts)
-            st.success("OCR complete - {} chars from {} pages.".format(
-                len(combined), len(page_indices)
-            ))
         except ImportError:
-            st.warning("OCR not available. Install pytesseract or easyocr for scanned PDF support.")
-        except Exception as e:
-            st.error("OCR failed: {}".format(str(e)))
-
+            pass
+        except Exception:
+            pass
+    doc.close()
     return combined, images
 
 
