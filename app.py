@@ -22,83 +22,47 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-from utils.style import inject_css, kpi, tr, score_bar, score_color, LOGO_B64
+try:
+    from utils.style import inject_css, kpi, tr, score_bar, score_color, LOGO_B64
+except Exception as e:
+    st.error("Import error: {}".format(e))
+    st.stop()
 
 # ── Splash Screen ─────────────────────────────────────────
 if "splash_done" not in st.session_state:
     st.session_state["splash_done"] = False
 
 if not st.session_state["splash_done"]:
-    # Full-page dark overlay + hide sidebar/header
-    st.markdown(
-        '<style>'
-        'section[data-testid="stSidebar"] { display: none !important; }'
-        'header[data-testid="stHeader"] { display: none !important; }'
-        '.stApp, [data-testid="stAppViewContainer"], .main, .block-container {'
-        '  background: #0f172a !important;'
-        '}'
-        '@keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }'
-        '.stTextInput label { display: none !important; }'
-        '.stTextInput input {'
-        '  background: rgba(255,255,255,0.08) !important;'
-        '  border: 1px solid rgba(255,255,255,0.2) !important;'
-        '  color: #ffffff !important; text-align: center !important;'
-        '  border-radius: 30px !important; font-size: 0.8rem !important;'
-        '  letter-spacing: 1px !important;'
-        '}'
-        '.stTextInput input::placeholder { color: rgba(255,255,255,0.3) !important; }'
-        'button[data-testid="stBaseButton-primary"] {'
-        '  background: transparent !important; border: 1px solid rgba(255,255,255,0.25) !important;'
-        '  color: #ffffff !important; font-size: 0.72rem !important; letter-spacing: 3px !important;'
-        '  text-transform: uppercase !important; padding: 0.7rem 2rem !important;'
-        '  border-radius: 30px !important; font-weight: 600 !important;'
-        '}'
-        'button[data-testid="stBaseButton-primary"]:hover {'
-        '  background: rgba(255,255,255,0.1) !important;'
-        '  border-color: rgba(255,255,255,0.5) !important;'
-        '}'
-        '</style>',
-        unsafe_allow_html=True,
-    )
-
+    # Dark full-screen overlay via fixed-position div
     logo_splash = ""
     if LOGO_B64:
-        logo_splash = '<img src="data:image/png;base64,{}" style="height:160px;filter:drop-shadow(0 12px 40px rgba(0,0,0,0.4));">'.format(LOGO_B64)
+        logo_splash = '<img src="data:image/png;base64,{}" style="height:140px;">'.format(LOGO_B64)
 
     st.markdown(
-        '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;'
-        'min-height:60vh;text-align:center;padding-top:8vh;">'
+        '<div id="splash-overlay" style="'
+        'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:999999;'
+        'background:linear-gradient(135deg,#0f172a 0%,#1e293b 50%,#0f172a 100%);'
+        'display:flex;flex-direction:column;align-items:center;justify-content:center;'
+        'text-align:center;">'
         '{logo}'
-        '<div style="font-size:2.8rem;font-weight:900;color:#ffffff;letter-spacing:-1px;'
-        'margin-top:1.5rem;animation:fadeIn 0.8s ease-out 0.3s both;">PATTON</div>'
-        '<div style="width:60px;height:3px;background:linear-gradient(90deg,#2563eb,#d4a853);'
-        'border-radius:2px;margin:1.2rem auto;animation:fadeIn 0.8s ease-out 0.4s both;"></div>'
-        '<div style="font-size:0.75rem;color:#94a3b8;letter-spacing:4px;text-transform:uppercase;'
-        'font-weight:600;animation:fadeIn 0.8s ease-out 0.5s both;">Real Estate Intelligence</div>'
+        '<div style="font-size:2.8rem;font-weight:900;color:#ffffff;letter-spacing:-1px;margin-top:1.5rem;">PATTON</div>'
+        '<div style="width:60px;height:3px;background:linear-gradient(90deg,#2563eb,#d4a853);border-radius:2px;margin:1.2rem auto;"></div>'
+        '<div style="font-size:0.75rem;color:#94a3b8;letter-spacing:4px;text-transform:uppercase;font-weight:600;">Real Estate Intelligence</div>'
         '</div>'.format(logo=logo_splash),
         unsafe_allow_html=True,
     )
 
-    # Password + ENTER button
+    # Password + ENTER
+    st.markdown('<div style="height:30vh;"></div>', unsafe_allow_html=True)
     _c1, _c2, _c3 = st.columns([2, 1, 2])
     with _c2:
-        pwd = st.text_input("Password", type="password", placeholder="Enter password", key="splash_pwd")
+        pwd = st.text_input("Password", type="password", placeholder="Enter password", key="splash_pwd", label_visibility="collapsed")
         if st.button("ENTER", key="splash_enter", type="primary", use_container_width=True):
             if pwd == "pattonre.com":
                 st.session_state["splash_done"] = True
                 st.rerun()
             else:
-                st.markdown(
-                    '<div style="text-align:center;color:#f87171;font-size:0.75rem;margin-top:0.5rem;">Incorrect password</div>',
-                    unsafe_allow_html=True,
-                )
-
-    st.markdown(
-        '<div style="text-align:center;margin-top:4rem;">'
-        '<div style="font-size:0.55rem;color:#475569;letter-spacing:1px;">'
-        'Patton Commercial Real Estate &mdash; Miami-Dade County</div></div>',
-        unsafe_allow_html=True,
-    )
+                st.error("Incorrect password")
     st.stop()
 
 inject_css()
