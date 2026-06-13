@@ -45,5 +45,5 @@ if already_running; then
         open "http://localhost:$PORT"
     fi
 else
-    osascript -e 'display dialog "PATONRIEL failed to start. Check the log at:\n'"$LOG" buttons {"OK"} default button "OK" with title "PATONRIEL"'
+    osascript -e 'display dialog "PATTON failed to start. Check the log at:\n'"$LOG" buttons {"OK"} default button "OK" with title "PATTON"'
 fi

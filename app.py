@@ -1753,20 +1753,20 @@ with tabs[11]:
     ec1, ec2, ec3, ec4 = st.columns(4)
     with ec1:
         csv_data = export_csv(report_data, st.session_state.address)
-        st.download_button("CSV", csv_data, file_name="patonriel_report.csv", mime="text/csv", use_container_width=True)
+        st.download_button("CSV", csv_data, file_name="patton_report.csv", mime="text/csv", use_container_width=True)
     with ec2:
         json_data = export_json(report_data, st.session_state.address)
-        st.download_button("JSON", json_data, file_name="patonriel_report.json", mime="application/json", use_container_width=True)
+        st.download_button("JSON", json_data, file_name="patton_report.json", mime="application/json", use_container_width=True)
     with ec3:
         md_data = export_markdown(report_data, st.session_state.address, scores, st.session_state.financials, nb_name)
-        st.download_button("Markdown", md_data, file_name="patonriel_report.md", mime="text/markdown", use_container_width=True)
+        st.download_button("Markdown", md_data, file_name="patton_report.md", mime="text/markdown", use_container_width=True)
     with ec4:
         pro_html = export_professional_html(
             st.session_state.address, geo, nb_name, nb, parcel,
             scores, st.session_state.financials, rec_for_export,
             dp_for_export, val_rec_export,
         )
-        st.download_button("HTML Report", pro_html, file_name="patonriel_report.html", mime="text/html", use_container_width=True)
+        st.download_button("HTML Report", pro_html, file_name="patton_report.html", mime="text/html", use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
     with st.expander("Report Preview (Markdown)"):
