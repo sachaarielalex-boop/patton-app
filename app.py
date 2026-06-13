@@ -530,6 +530,13 @@ with tabs[0]:
     kpi_items = []
     if nb:
         mkt = nb.get("mkt", {})
+        last_sales = nb.get("last_sales", [])
+        n_comps = len(last_sales)
+        price_range = mkt.get("range", "N/A")
+        inv_mo = mkt.get("inv_mo", "N/A")
+        ls_ratio = mkt.get("ls_ratio", "N/A")
+        absorption = mkt.get("absorption", "N/A")
+
         kpi_items.append(kpi("Median Price", format_currency(mkt.get("med_price")), "Neighborhood"))
         kpi_items.append(kpi("Price / sqft", "${}".format(mkt.get("psf", "N/A")), "Per square foot"))
         kpi_items.append(kpi("Avg Rent", format_currency(mkt.get("rent")) + "/mo", "Monthly"))
@@ -542,6 +549,37 @@ with tabs[0]:
         kpi_items.append(kpi("Records Found", str(len(records)), "Open Data"))
         kpi_items.append(kpi("Confidence", "{}%".format(geo.get("confidence", 0)), "Geocoding"))
     st.markdown('<div class="kpi-grid">{}</div>'.format("".join(kpi_items)), unsafe_allow_html=True)
+
+    # Data methodology (clickable)
+    if nb:
+        mkt = nb.get("mkt", {})
+        last_sales = nb.get("last_sales", [])
+        n_comps = len(last_sales)
+        with st.expander("How are these metrics calculated?"):
+            st.markdown(
+                '<div style="font-size:0.82rem;color:var(--text-secondary);line-height:1.8;">'
+                '<b>Median Price</b> — Median of {n} recent comparable sales in the {hood} neighborhood. Range: {rng}.<br>'
+                '<b>Price / sqft</b> — Total sale price divided by gross living area (sqft). Averaged across comparables.<br>'
+                '<b>Avg Rent</b> — Average monthly rental asking price for similar properties. Based on current active rental listings in the submarket.<br>'
+                '<b>Gross Yield</b> — Formula: <code>(Annual Rent / Purchase Price) x 100</code>. '
+                'Calculated as ({rent} x 12) / {med} = {yld}%.<br>'
+                '<b>YoY Growth</b> — Year-over-year price appreciation based on rolling 12-month median comparison vs prior year.<br>'
+                '<b>Days on Market</b> — Average number of days from listing to contract for sold properties in the past 6 months.<br>'
+                '<hr style="border:none;border-top:1px solid var(--border);margin:0.6rem 0;">'
+                '<b>Data Sources:</b> Miami-Dade County Property Appraiser, MLS/Redfin API, OpenStreetMap, neighborhood comp database ({n} comps).<br>'
+                '<b>Confidence:</b> Inventory {inv} months | List-to-Sale ratio {ls}% | Absorption rate {ab}%'
+                '</div>'.format(
+                    n=n_comps, hood=st.session_state.nb_name or "N/A",
+                    rng=mkt.get("range", "N/A"),
+                    rent=format_currency(mkt.get("rent")),
+                    med=format_currency(mkt.get("med_price")),
+                    yld=mkt.get("yield", "N/A"),
+                    inv=mkt.get("inv_mo", "N/A"),
+                    ls=mkt.get("ls_ratio", "N/A"),
+                    ab=mkt.get("absorption", "N/A"),
+                ),
+                unsafe_allow_html=True,
+            )
 
     c1, c2 = st.columns([3, 2])
     with c1:
@@ -696,7 +734,7 @@ with tabs[2]:
         rows += tr("Sale Date", str(parcel.get("SALE DATE", "N/A")))
         st.markdown('<table class="dtable">{}</table></div>'.format(rows), unsafe_allow_html=True)
     else:
-        st.markdown('<div class="alert-info">No parcel match in local database. Showing API results only.</div>', unsafe_allow_html=True)
+        pass  # Silently skip if no parcel data
 
     if records:
         st.markdown('<div class="card"><div class="card-title">Miami-Dade Open Data ({} records) <span class="source-tag">API</span></div>'.format(len(records)), unsafe_allow_html=True)
@@ -710,8 +748,7 @@ with tabs[2]:
         df = pd.DataFrame(disp).astype(str)
         st.dataframe(df, use_container_width=True, hide_index=True)
         st.markdown('</div>', unsafe_allow_html=True)
-    elif not parcel:
-        st.markdown('<div class="alert-warn">No property records found for this address.</div>', unsafe_allow_html=True)
+    # Silently skip if no records
 
     # Properties within 1 mile
     if geo.get("lat"):
@@ -847,9 +884,9 @@ with tabs[4]:
     with dc1:
         st.markdown('<div style="font-size:0.65rem;color:var(--slate-500);text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:0.3rem;">Site & Zoning</div>', unsafe_allow_html=True)
         dp_lot = st.number_input("Lot Size (sqft)", value=default_lot, step=500, min_value=500, key="dp_lot")
-        dp_far = st.number_input("FAR", value=default_far, step=0.5, min_value=0.5, max_value=20.0, key="dp_far")
-        dp_max_ht = st.number_input("Max Height (ft)", value=default_max_ht, step=5, min_value=20, key="dp_ht")
-        dp_max_fl = st.number_input("Max Floors", value=default_max_fl, step=1, min_value=1, key="dp_fl")
+        dp_far = st.number_input("FAR", value=min(default_far, 50.0), step=0.5, min_value=0.5, max_value=50.0, key="dp_far")
+        dp_max_ht = st.number_input("Max Height (ft)", value=max(default_max_ht, 20), step=5, min_value=20, key="dp_ht")
+        dp_max_fl = st.number_input("Max Floors", value=max(default_max_fl, 1), step=1, min_value=1, key="dp_fl")
         dp_floor_eff = st.slider("Floor Efficiency %", 60, 95, 80, key="dp_fe")
     with dc2:
         st.markdown('<div style="font-size:0.65rem;color:var(--slate-500);text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:0.3rem;">Unit Mix</div>', unsafe_allow_html=True)
@@ -1061,14 +1098,23 @@ with tabs[5]:
         show_cols = ["address", "price", "beds", "baths", "sqft", "psf", "type", "dom", "lot_sf", "year_built"]
         show_cols = [c for c in show_cols if c in act_df.columns]
         act_display = act_df[show_cols].copy()
+        def _fmt_cur(x):
+            try: return "${:,}".format(int(x)) if x else "N/A"
+            except (ValueError, TypeError): return str(x) if x else "N/A"
+        def _fmt_num(x):
+            try: return "{:,}".format(int(x)) if x else ""
+            except (ValueError, TypeError): return str(x) if x else ""
+        def _fmt_psf(x):
+            try: return "${:.0f}".format(float(x)) if x else ""
+            except (ValueError, TypeError): return str(x) if x else ""
         if "price" in act_display.columns:
-            act_display["price"] = act_display["price"].apply(lambda x: "${:,}".format(x) if x else "N/A")
+            act_display["price"] = act_display["price"].apply(_fmt_cur)
         if "sqft" in act_display.columns:
-            act_display["sqft"] = act_display["sqft"].apply(lambda x: "{:,}".format(x) if x else "")
+            act_display["sqft"] = act_display["sqft"].apply(_fmt_num)
         if "lot_sf" in act_display.columns:
-            act_display["lot_sf"] = act_display["lot_sf"].apply(lambda x: "{:,}".format(x) if x else "")
+            act_display["lot_sf"] = act_display["lot_sf"].apply(_fmt_num)
         if "psf" in act_display.columns:
-            act_display["psf"] = act_display["psf"].apply(lambda x: "${:.0f}".format(x) if x else "")
+            act_display["psf"] = act_display["psf"].apply(_fmt_psf)
         act_display.columns = [c.replace("_", " ").title() for c in act_display.columns]
         st.dataframe(act_display.astype(str), use_container_width=True, hide_index=True)
 
@@ -1101,13 +1147,13 @@ with tabs[5]:
         show_cols = [c for c in show_cols if c in sold_df.columns]
         sold_display = sold_df[show_cols].copy()
         if "price" in sold_display.columns:
-            sold_display["price"] = sold_display["price"].apply(lambda x: "${:,}".format(x) if x else "N/A")
+            sold_display["price"] = sold_display["price"].apply(_fmt_cur)
         if "sqft" in sold_display.columns:
-            sold_display["sqft"] = sold_display["sqft"].apply(lambda x: "{:,}".format(x) if x else "")
+            sold_display["sqft"] = sold_display["sqft"].apply(_fmt_num)
         if "lot_sf" in sold_display.columns:
-            sold_display["lot_sf"] = sold_display["lot_sf"].apply(lambda x: "{:,}".format(x) if x else "")
+            sold_display["lot_sf"] = sold_display["lot_sf"].apply(_fmt_num)
         if "psf" in sold_display.columns:
-            sold_display["psf"] = sold_display["psf"].apply(lambda x: "${:.0f}".format(x) if x else "")
+            sold_display["psf"] = sold_display["psf"].apply(_fmt_psf)
         sold_display.columns = [c.replace("_", " ").title() for c in sold_display.columns]
         st.dataframe(sold_display.astype(str), use_container_width=True, hide_index=True)
 
