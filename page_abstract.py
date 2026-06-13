@@ -139,7 +139,10 @@ def render_abstract_page():
             with st.expander("Raw Extracted Text", expanded=False):
                 st.text_area("", pdf_text, height=300, key="abs_raw_text_bg")
             fields = _parse_lease_fields(pdf_text)
-            _add_to_scan_history(fields, filename, page_images)
+            try:
+                _add_to_scan_history(fields, filename, page_images)
+            except Exception:
+                pass
         else:
             st.warning("No text extracted. Fill in fields manually.")
             if page_images:
@@ -181,7 +184,10 @@ def render_abstract_page():
         with st.expander("Raw Extracted Text", expanded=False):
             st.text_area("", pdf_text, height=300, key="abs_raw_text")
         fields = _parse_lease_fields(pdf_text)
-        _add_to_scan_history(fields, filename, page_images)
+        try:
+            _add_to_scan_history(fields, filename, page_images)
+        except Exception:
+            pass
         _render_edit_fields(fields, filename)
     else:
         # Need OCR — launch in background
@@ -308,7 +314,6 @@ def _render_edit_fields(fields, filename=""):
         generate_clicked = st.button("Generate Lease Abstract", type="primary", use_container_width=True, key=pfx + "_gen")
 
     if generate_clicked:
-        _add_to_scan_history(fields, filename)
         try:
             with st.spinner("Generating abstract..."):
                 docx_bytes = _generate_abstract_docx(fields)

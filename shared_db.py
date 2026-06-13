@@ -19,9 +19,12 @@ def _load():
 
 
 def _save(data):
-    with _lock:
-        with open(DB_PATH, "w") as f:
-            json.dump(data, f, ensure_ascii=False)
+    try:
+        with _lock:
+            with open(DB_PATH, "w") as f:
+                json.dump(data, f, ensure_ascii=False)
+    except (IOError, OSError):
+        pass  # Silently fail on read-only filesystems (cloud)
 
 
 def get(key, default=None):
