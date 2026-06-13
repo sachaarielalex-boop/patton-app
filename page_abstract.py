@@ -303,24 +303,34 @@ def _render_edit_fields(fields, filename=""):
     # ── Generate ─────────────────────────────────────────
     st.markdown("---")
     if st.button("Generate Lease Abstract", type="primary", use_container_width=True, key=pfx + "_gen"):
-        # Save/update scan history
         _add_to_scan_history(fields, filename)
         with st.spinner("Generating abstract..."):
             docx_bytes = _generate_abstract_docx(fields)
         fname = "LEASE_ABSTRACT_{}.docx".format(
             fields.get("tenant_name", "TENANT").replace(" ", "_").upper()[:30]
         )
+        st.session_state["_generated_docx"] = docx_bytes
+        st.session_state["_generated_fname"] = fname
+        st.session_state["_generated_fields"] = dict(fields)
+        st.rerun()
+
+    # Show download + tenant folder if generated
+    if st.session_state.get("_generated_docx"):
+        docx_bytes = st.session_state["_generated_docx"]
+        fname = st.session_state["_generated_fname"]
+        gen_fields = st.session_state.get("_generated_fields", {})
+
+        st.success("Abstract generated!")
         st.download_button(
             "Download Lease Abstract (.docx)", docx_bytes, fname,
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             use_container_width=True, key=pfx + "_dl",
         )
-        st.success("Abstract generated!")
 
         # Add to Tenant Folder option
         st.markdown("---")
         st.markdown("##### Add to Tenant Folder")
-        tenant_name = fields.get("tenant_name", "").strip() or "Unknown Tenant"
+        tenant_name = gen_fields.get("tenant_name", "").strip() or "Unknown Tenant"
 
         folders = shared_db.get("tenant_folders", {})
         folder_names = list(folders.keys())
@@ -344,11 +354,12 @@ def _render_edit_fields(fields, filename=""):
                 "tenant": tenant_name,
                 "filename": fname,
                 "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "fields": dict(fields),
+                "fields": gen_fields,
             }
             folders[folder_target].append(doc_entry)
             shared_db.put("tenant_folders", folders)
             st.success("Saved to tenant folder: {}".format(folder_target))
+            st.session_state["_generated_docx"] = None
 
 
 # ═══════════════════════════════════════════════════════
