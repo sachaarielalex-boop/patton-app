@@ -29,15 +29,34 @@ if "splash_done" not in st.session_state:
     st.session_state["splash_done"] = False
 
 if not st.session_state["splash_done"]:
-    # Hide sidebar/header, dark background on the main app area
+    # Full-page dark overlay + hide sidebar/header
     st.markdown(
         '<style>'
         'section[data-testid="stSidebar"] { display: none !important; }'
         'header[data-testid="stHeader"] { display: none !important; }'
-        '[data-testid="stAppViewContainer"] {'
-        '  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%) !important;'
+        '.stApp, [data-testid="stAppViewContainer"], .main, .block-container {'
+        '  background: #0f172a !important;'
         '}'
         '@keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }'
+        '.stTextInput label { display: none !important; }'
+        '.stTextInput input {'
+        '  background: rgba(255,255,255,0.08) !important;'
+        '  border: 1px solid rgba(255,255,255,0.2) !important;'
+        '  color: #ffffff !important; text-align: center !important;'
+        '  border-radius: 30px !important; font-size: 0.8rem !important;'
+        '  letter-spacing: 1px !important;'
+        '}'
+        '.stTextInput input::placeholder { color: rgba(255,255,255,0.3) !important; }'
+        'button[data-testid="stBaseButton-primary"] {'
+        '  background: transparent !important; border: 1px solid rgba(255,255,255,0.25) !important;'
+        '  color: #ffffff !important; font-size: 0.72rem !important; letter-spacing: 3px !important;'
+        '  text-transform: uppercase !important; padding: 0.7rem 2rem !important;'
+        '  border-radius: 30px !important; font-weight: 600 !important;'
+        '}'
+        'button[data-testid="stBaseButton-primary"]:hover {'
+        '  background: rgba(255,255,255,0.1) !important;'
+        '  border-color: rgba(255,255,255,0.5) !important;'
+        '}'
         '</style>',
         unsafe_allow_html=True,
     )
@@ -48,7 +67,7 @@ if not st.session_state["splash_done"]:
 
     st.markdown(
         '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;'
-        'min-height:70vh;text-align:center;padding-top:10vh;">'
+        'min-height:60vh;text-align:center;padding-top:8vh;">'
         '{logo}'
         '<div style="font-size:2.8rem;font-weight:900;color:#ffffff;letter-spacing:-1px;'
         'margin-top:1.5rem;animation:fadeIn 0.8s ease-out 0.3s both;">PATTON</div>'
@@ -63,30 +82,6 @@ if not st.session_state["splash_done"]:
     # Password + ENTER button
     _c1, _c2, _c3 = st.columns([2, 1, 2])
     with _c2:
-        st.markdown(
-            '<style>'
-            '[data-testid="stBaseButton-primary"] button {'
-            '  background: transparent !important; border: 1px solid rgba(255,255,255,0.25) !important;'
-            '  color: #ffffff !important; font-size: 0.72rem !important; letter-spacing: 3px !important;'
-            '  text-transform: uppercase !important; padding: 0.7rem 2rem !important;'
-            '  border-radius: 30px !important; font-weight: 600 !important;'
-            '}'
-            '[data-testid="stBaseButton-primary"] button:hover {'
-            '  background: rgba(255,255,255,0.1) !important;'
-            '  border-color: rgba(255,255,255,0.5) !important;'
-            '}'
-            '.stTextInput input {'
-            '  background: rgba(255,255,255,0.08) !important;'
-            '  border: 1px solid rgba(255,255,255,0.2) !important;'
-            '  color: #ffffff !important; text-align: center !important;'
-            '  border-radius: 30px !important; font-size: 0.8rem !important;'
-            '  letter-spacing: 1px !important;'
-            '}'
-            '.stTextInput input::placeholder { color: rgba(255,255,255,0.3) !important; }'
-            '.stTextInput label { display: none !important; }'
-            '</style>',
-            unsafe_allow_html=True,
-        )
         pwd = st.text_input("Password", type="password", placeholder="Enter password", key="splash_pwd")
         if st.button("ENTER", key="splash_enter", type="primary", use_container_width=True):
             if pwd == "pattonre.com":
