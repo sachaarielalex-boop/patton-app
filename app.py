@@ -77,15 +77,15 @@ if not st.session_state["splash_done"]:
 inject_css()
 
 # Top bar: theme toggle + news
-_tb_spacer, _tb_news, _tb_theme = st.columns([0.8, 0.1, 0.1])
+_tb_spacer, _tb_news, _tb_theme = st.columns([6, 1, 1])
 with _tb_news:
-    if st.button("News", key="top_news"):
+    if st.button("News", key="top_news", use_container_width=True):
         st.session_state["app_mode"] = "news"
         st.rerun()
 with _tb_theme:
     theme = st.session_state.get("theme", "light")
-    icon_label = "\U0001f319" if theme == "light" else "\u2600\ufe0f"
-    if st.button(icon_label, key="theme_btn"):
+    icon_label = "Dark" if theme == "light" else "Light"
+    if st.button(icon_label, key="theme_btn", use_container_width=True):
         st.session_state["theme"] = "dark" if theme == "light" else "light"
         st.rerun()
 

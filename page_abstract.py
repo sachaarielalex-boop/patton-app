@@ -302,7 +302,12 @@ def _render_edit_fields(fields, filename=""):
 
     # ── Generate ─────────────────────────────────────────
     st.markdown("---")
-    if st.button("Generate Lease Abstract", type="primary", use_container_width=True, key=pfx + "_gen"):
+    # Generate button - creates docx immediately without rerun
+    gen_col1, gen_col2 = st.columns([3, 1])
+    with gen_col1:
+        generate_clicked = st.button("Generate Lease Abstract", type="primary", use_container_width=True, key=pfx + "_gen")
+
+    if generate_clicked:
         _add_to_scan_history(fields, filename)
         try:
             with st.spinner("Generating abstract..."):
@@ -313,15 +318,14 @@ def _render_edit_fields(fields, filename=""):
             st.session_state["_generated_docx"] = docx_bytes
             st.session_state["_generated_fname"] = fname
             st.session_state["_generated_fields"] = dict(fields)
-            st.rerun()
         except Exception as e:
             st.error("Error generating abstract: {}".format(e))
 
     # Show download + tenant folder if generated
     if st.session_state.get("_generated_docx"):
         docx_bytes = st.session_state["_generated_docx"]
-        fname = st.session_state["_generated_fname"]
-        gen_fields = st.session_state.get("_generated_fields", {})
+        fname = st.session_state.get("_generated_fname", "lease_abstract.docx")
+        gen_fields = st.session_state.get("_generated_fields", fields)
 
         st.success("Abstract generated!")
         st.download_button(
