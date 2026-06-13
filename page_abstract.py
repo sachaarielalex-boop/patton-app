@@ -304,15 +304,18 @@ def _render_edit_fields(fields, filename=""):
     st.markdown("---")
     if st.button("Generate Lease Abstract", type="primary", use_container_width=True, key=pfx + "_gen"):
         _add_to_scan_history(fields, filename)
-        with st.spinner("Generating abstract..."):
-            docx_bytes = _generate_abstract_docx(fields)
-        fname = "LEASE_ABSTRACT_{}.docx".format(
-            fields.get("tenant_name", "TENANT").replace(" ", "_").upper()[:30]
-        )
-        st.session_state["_generated_docx"] = docx_bytes
-        st.session_state["_generated_fname"] = fname
-        st.session_state["_generated_fields"] = dict(fields)
-        st.rerun()
+        try:
+            with st.spinner("Generating abstract..."):
+                docx_bytes = _generate_abstract_docx(fields)
+            fname = "LEASE_ABSTRACT_{}.docx".format(
+                fields.get("tenant_name", "TENANT").replace(" ", "_").upper()[:30]
+            )
+            st.session_state["_generated_docx"] = docx_bytes
+            st.session_state["_generated_fname"] = fname
+            st.session_state["_generated_fields"] = dict(fields)
+            st.rerun()
+        except Exception as e:
+            st.error("Error generating abstract: {}".format(e))
 
     # Show download + tenant folder if generated
     if st.session_state.get("_generated_docx"):
