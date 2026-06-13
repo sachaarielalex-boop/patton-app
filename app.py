@@ -285,8 +285,31 @@ if st.session_state["app_mode"] == "home":
     st.markdown(
         '<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;">'
         '<div style="font-size:0.6rem;color:var(--text-muted);letter-spacing:0.5px;font-weight:500;">PATTON &mdash; Patton Commercial Real Estate &mdash; Miami-Dade County, FL</div>'
-        '</div>'
-        '<div style="text-align:right;padding:0.5rem 0;margin-top:0.5rem;">'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    # Hidden install instructions
+    with st.expander("", expanded=False):
+        st.markdown(
+            '<div style="text-align:center;padding:0.8rem 0.5rem;">'
+            '<div style="font-size:0.82rem;font-weight:700;color:var(--text-primary);margin-bottom:0.8rem;">Install PATTON on your device</div>'
+            '<div style="text-align:left;max-width:360px;margin:0 auto;">'
+            '<div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:0.6rem;">'
+            '<b>Desktop (Chrome)</b><br>'
+            '&#x2192; Menu &#x22EE; &rarr; <i>Save and Share</i> &rarr; <i>Install page as app</i></div>'
+            '<div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:0.6rem;">'
+            '<b>iPhone / iPad</b><br>'
+            '&#x2192; Safari &rarr; Share &#x2197; &rarr; <i>Add to Home Screen</i></div>'
+            '<div style="font-size:0.75rem;color:var(--text-secondary);">'
+            '<b>Android</b><br>'
+            '&#x2192; Chrome &rarr; Menu &#x22EE; &rarr; <i>Add to Home Screen</i></div>'
+            '</div></div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown(
+        '<div style="text-align:right;padding:0.5rem 0;margin-top:0.3rem;">'
         '<span style="font-size:0.52rem;color:var(--text-muted);letter-spacing:0.5px;font-style:italic;">Developed by Sacha Ariel</span>'
         '</div>',
         unsafe_allow_html=True,
