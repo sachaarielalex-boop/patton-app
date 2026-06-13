@@ -8,6 +8,7 @@ def _load_brokers():
     try:
         import openpyxl
     except ImportError:
+        st.warning("openpyxl not installed")
         return [], [], []
 
     brokers = []
@@ -15,7 +16,13 @@ def _load_brokers():
     contacts = []
 
     # Brokers list
-    path1 = os.path.join(os.path.dirname(__file__), "brokers_data.xlsx")
+    _dir = os.path.dirname(os.path.abspath(__file__))
+    path1 = os.path.join(_dir, "brokers_data.xlsx")
+    if not os.path.exists(path1):
+        # Try current working directory as fallback
+        path1 = os.path.join(os.getcwd(), "brokers_data.xlsx")
+    if not os.path.exists(path1):
+        st.warning("Broker data file not found.")
     if os.path.exists(path1):
         wb = openpyxl.load_workbook(path1, data_only=True)
 
@@ -66,7 +73,9 @@ def _load_brokers():
                 })
 
     # Coral Gables Office Lease contacts
-    path2 = os.path.join(os.path.dirname(__file__), "coral_gables_data.xlsx")
+    path2 = os.path.join(_dir, "coral_gables_data.xlsx")
+    if not os.path.exists(path2):
+        path2 = os.path.join(os.getcwd(), "coral_gables_data.xlsx")
     if os.path.exists(path2):
         wb2 = openpyxl.load_workbook(path2, data_only=True)
         ws2 = wb2[wb2.sheetnames[0]]
@@ -109,7 +118,11 @@ def render_brokers_page():
     )
 
     with st.spinner("Loading contacts..."):
-        firms, brokers, contacts = _load_brokers()
+        try:
+            firms, brokers, contacts = _load_brokers()
+        except Exception as e:
+            st.error("Error loading broker data: {}".format(e))
+            firms, brokers, contacts = [], [], []
 
     # KPIs
     st.markdown(
