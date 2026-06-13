@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.DS_Store
+*.egg-info/
+.env
+_shared_data.json
+*.log
+.streamlit/secrets.toml
+.streamlit.pid
+.streamlit_log*.txt
+logo_b64*.txt
+favicon.png
