@@ -15,16 +15,23 @@ def _load_brokers():
     firms = []
     contacts = []
 
+    def _find(name):
+        """Find a data file in the app directory or cwd."""
+        for d in [os.path.dirname(os.path.abspath(__file__)), os.getcwd()]:
+            p = os.path.join(d, name)
+            if os.path.exists(p):
+                return p
+        return None
+
     # Brokers list
-    _dir = os.path.dirname(os.path.abspath(__file__))
-    path1 = os.path.join(_dir, "brokers_data.xlsx")
-    if not os.path.exists(path1):
-        # Try current working directory as fallback
-        path1 = os.path.join(os.getcwd(), "brokers_data.xlsx")
-    if not os.path.exists(path1):
+    path1 = _find("brokers_data.xlsx")
+    if not path1:
         st.warning("Broker data file not found.")
-    if os.path.exists(path1):
+        return firms, brokers, contacts
+
+    try:
         wb = openpyxl.load_workbook(path1, data_only=True)
+        st.caption("Loaded: {} sheets {}".format(path1, wb.sheetnames))
 
         # South Florida CRE Firms
         if "South Florida CRE Firms" in wb.sheetnames:
@@ -42,56 +49,61 @@ def _load_brokers():
         if "Brokers List" in wb.sheetnames:
             ws = wb["Brokers List"]
             for row in ws.iter_rows(min_row=2, max_row=ws.max_row, values_only=True):
-                name = str(row[2] or "").strip() if row[2] else ""
+                name = str(row[2] or "").strip() if len(row) > 2 and row[2] else ""
                 if not name:
                     continue
                 brokers.append({
                     "name": name,
-                    "email": str(row[3] or "").strip(),
-                    "mobile": str(row[4] or "").strip(),
-                    "type": str(row[6] or "").strip(),
-                    "organization": str(row[7] or "").strip(),
-                    "market": str(row[8] or "").strip(),
-                    "linkedin": str(row[9] or "").strip(),
+                    "email": str(row[3] or "").strip() if len(row) > 3 else "",
+                    "mobile": str(row[4] or "").strip() if len(row) > 4 else "",
+                    "type": str(row[6] or "").strip() if len(row) > 6 else "",
+                    "organization": str(row[7] or "").strip() if len(row) > 7 else "",
+                    "market": str(row[8] or "").strip() if len(row) > 8 else "",
+                    "linkedin": str(row[9] or "").strip() if len(row) > 9 else "",
                 })
 
         # Looking for Leases List
         if "Looking for Leases List" in wb.sheetnames:
             ws = wb["Looking for Leases List"]
             for row in ws.iter_rows(min_row=2, max_row=ws.max_row, values_only=True):
-                name = str(row[2] or "").strip() if row[2] else ""
+                name = str(row[2] or "").strip() if len(row) > 2 and row[2] else ""
                 if not name:
                     continue
                 contacts.append({
                     "name": name,
-                    "email": str(row[3] or "").strip(),
-                    "mobile": str(row[4] or "").strip(),
-                    "type": str(row[6] or "").strip(),
-                    "organization": str(row[7] or "").strip(),
-                    "market": str(row[8] or "").strip(),
-                    "linkedin": str(row[9] or "").strip(),
+                    "email": str(row[3] or "").strip() if len(row) > 3 else "",
+                    "mobile": str(row[4] or "").strip() if len(row) > 4 else "",
+                    "type": str(row[6] or "").strip() if len(row) > 6 else "",
+                    "organization": str(row[7] or "").strip() if len(row) > 7 else "",
+                    "market": str(row[8] or "").strip() if len(row) > 8 else "",
+                    "linkedin": str(row[9] or "").strip() if len(row) > 9 else "",
                 })
+        wb.close()
+    except Exception as e:
+        st.error("Error loading brokers: {}".format(e))
 
     # Coral Gables Office Lease contacts
-    path2 = os.path.join(_dir, "coral_gables_data.xlsx")
-    if not os.path.exists(path2):
-        path2 = os.path.join(os.getcwd(), "coral_gables_data.xlsx")
-    if os.path.exists(path2):
-        wb2 = openpyxl.load_workbook(path2, data_only=True)
-        ws2 = wb2[wb2.sheetnames[0]]
-        for row in ws2.iter_rows(min_row=2, max_row=ws2.max_row, values_only=True):
-            if row[0]:
-                contacts.append({
-                    "name": str(row[0] or "").strip(),
-                    "type": str(row[1] or "").strip(),
-                    "market": str(row[2] or "").strip(),
-                    "organization": str(row[0] or "").strip(),
-                    "email": "",
-                    "mobile": str(row[4] or "").strip(),
-                    "address": str(row[3] or "").strip(),
-                    "website": str(row[5] or "").strip(),
-                    "linkedin": "",
-                })
+    path2 = _find("coral_gables_data.xlsx")
+    if path2:
+        try:
+            wb2 = openpyxl.load_workbook(path2, data_only=True)
+            ws2 = wb2[wb2.sheetnames[0]]
+            for row in ws2.iter_rows(min_row=2, max_row=ws2.max_row, values_only=True):
+                if row[0]:
+                    contacts.append({
+                        "name": str(row[0] or "").strip(),
+                        "type": str(row[1] or "").strip() if len(row) > 1 else "",
+                        "market": str(row[2] or "").strip() if len(row) > 2 else "",
+                        "organization": str(row[0] or "").strip(),
+                        "email": "",
+                        "mobile": str(row[4] or "").strip() if len(row) > 4 else "",
+                        "address": str(row[3] or "").strip() if len(row) > 3 else "",
+                        "website": str(row[5] or "").strip() if len(row) > 5 else "",
+                        "linkedin": "",
+                    })
+            wb2.close()
+        except Exception as e:
+            st.error("Error loading Coral Gables data: {}".format(e))
 
     return firms, brokers, contacts
 
