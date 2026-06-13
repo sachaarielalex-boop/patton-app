@@ -33,63 +33,40 @@ if "splash_done" not in st.session_state:
     st.session_state["splash_done"] = False
 
 if not st.session_state["splash_done"]:
-    logo_splash = ""
-    if LOGO_B64:
-        logo_splash = '<img src="data:image/png;base64,{}" style="height:140px;">'.format(LOGO_B64)
+    # Use native Streamlit components — no custom CSS for cloud compatibility
+    st.markdown("", unsafe_allow_html=True)  # spacer
 
-    # Dark background on all containers + style widgets for dark theme
-    st.markdown(
-        '<style>'
-        'html, body, .stApp, [data-testid="stAppViewContainer"], .main,'
-        '[data-testid="stMainBlockContainer"], .block-container,'
-        'section.main > div {{ background: #0f172a !important; }}'
-        'section[data-testid="stSidebar"] {{ display: none !important; }}'
-        'header[data-testid="stHeader"] {{ background: #0f172a !important; }}'
-        '.stTextInput label {{ display: none !important; }}'
-        '.stTextInput input {{'
-        '  background: rgba(255,255,255,0.08) !important;'
-        '  border: 1px solid rgba(255,255,255,0.2) !important;'
-        '  color: #ffffff !important; text-align: center !important;'
-        '  border-radius: 30px !important; font-size: 0.85rem !important;'
-        '  letter-spacing: 1px !important; padding: 0.6rem 1rem !important;'
-        '}}'
-        '.stTextInput input::placeholder {{ color: rgba(255,255,255,0.3) !important; }}'
-        'button[data-testid="stBaseButton-primary"] {{'
-        '  background: transparent !important; border: 1px solid rgba(255,255,255,0.25) !important;'
-        '  color: #ffffff !important; font-size: 0.72rem !important; letter-spacing: 3px !important;'
-        '  text-transform: uppercase !important; padding: 0.7rem 2rem !important;'
-        '  border-radius: 30px !important; font-weight: 600 !important;'
-        '}}'
-        'button[data-testid="stBaseButton-primary"]:hover {{'
-        '  background: rgba(255,255,255,0.1) !important;'
-        '  border-color: rgba(255,255,255,0.5) !important;'
-        '}}'
-        '</style>'.format(),
-        unsafe_allow_html=True,
-    )
-
-    # Logo + title
-    st.markdown(
-        '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;'
-        'min-height:50vh;text-align:center;padding-top:8vh;">'
-        '{logo}'
-        '<div style="font-size:2.8rem;font-weight:900;color:#ffffff;letter-spacing:-1px;margin-top:1.5rem;">PATTON</div>'
-        '<div style="width:60px;height:3px;background:linear-gradient(90deg,#2563eb,#d4a853);border-radius:2px;margin:1.2rem auto;"></div>'
-        '<div style="font-size:0.75rem;color:#94a3b8;letter-spacing:4px;text-transform:uppercase;font-weight:600;">Real Estate Intelligence</div>'
-        '</div>'.format(logo=logo_splash),
-        unsafe_allow_html=True,
-    )
-
-    # Password + ENTER
-    _c1, _c2, _c3 = st.columns([2, 1, 2])
-    with _c2:
+    _s1, _s2, _s3 = st.columns([1, 2, 1])
+    with _s2:
+        if LOGO_B64:
+            st.markdown(
+                '<div style="text-align:center;padding-top:12vh;">'
+                '<img src="data:image/png;base64,{}" style="height:120px;">'
+                '</div>'.format(LOGO_B64),
+                unsafe_allow_html=True,
+            )
+        st.markdown(
+            '<div style="text-align:center;margin-top:1rem;">'
+            '<div style="font-size:2.5rem;font-weight:900;color:#0f172a;letter-spacing:-1px;">PATTON</div>'
+            '<div style="width:60px;height:3px;background:linear-gradient(90deg,#2563eb,#d4a853);border-radius:2px;margin:1rem auto;"></div>'
+            '<div style="font-size:0.75rem;color:#64748b;letter-spacing:4px;text-transform:uppercase;font-weight:600;">Real Estate Intelligence</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown("")
         pwd = st.text_input("Password", type="password", placeholder="Enter password", key="splash_pwd", label_visibility="collapsed")
         if st.button("ENTER", key="splash_enter", type="primary", use_container_width=True):
-            if pwd == "pattonre.com":
+            if pwd == "patton.com":
                 st.session_state["splash_done"] = True
                 st.rerun()
             else:
                 st.error("Incorrect password")
+        st.markdown(
+            '<div style="text-align:center;margin-top:3rem;">'
+            '<div style="font-size:0.6rem;color:#94a3b8;letter-spacing:1px;">'
+            'Patton Commercial Real Estate &mdash; Miami-Dade County</div></div>',
+            unsafe_allow_html=True,
+        )
     st.stop()
 
 inject_css()
