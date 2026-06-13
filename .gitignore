@@ -9,4 +9,3 @@ _shared_data.json
 .streamlit.pid
 .streamlit_log*.txt
 logo_b64*.txt
-favicon.png
