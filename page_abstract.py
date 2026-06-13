@@ -383,7 +383,10 @@ def _extract_pdf_text_only(pdf_bytes):
 
 def _extract_pdf_with_ocr(pdf_bytes):
     """Full extraction with OCR fallback (runs in background thread)."""
-    import fitz
+    try:
+        import fitz
+    except ImportError:
+        return "", []
     text_parts = []
     images = []
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")

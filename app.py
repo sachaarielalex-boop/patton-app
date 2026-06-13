@@ -52,7 +52,7 @@ if not st.session_state["splash_done"]:
             )
         st.markdown(
             '<div style="text-align:center;margin-top:1rem;">'
-            '<div style="font-size:2.5rem;font-weight:900;color:#ffffff;letter-spacing:-1px;">PATTON</div>'
+            '<div style="font-size:2.5rem;font-weight:900;color:#0f172a;letter-spacing:-1px;">PATTON</div>'
             '<div style="width:60px;height:3px;background:linear-gradient(90deg,#2563eb,#d4a853);border-radius:2px;margin:1rem auto;"></div>'
             '<div style="font-size:0.75rem;color:#64748b;letter-spacing:4px;text-transform:uppercase;font-weight:600;">Real Estate Intelligence</div>'
             '</div>',

@@ -1,14 +1,11 @@
 """Broker Database page – CRE broker contacts and office lease contacts."""
 import streamlit as st
-import os
 
 
 def _load_brokers():
     """Load broker data from embedded Python data."""
     from brokers_embedded import FIRMS, BROKERS, CONTACTS
     return FIRMS, BROKERS, CONTACTS
-
-    return firms, brokers, contacts
 
 
 def render_brokers_page():
