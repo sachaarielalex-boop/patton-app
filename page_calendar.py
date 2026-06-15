@@ -130,7 +130,7 @@ def render_calendar_page():
             visit_date = st.date_input("Visit Date", value=today + datetime.timedelta(days=1), key="cal_date")
             visit_time = st.time_input("Visit Time", value=datetime.time(10, 0), key="cal_time")
             building = st.selectbox("Building", [
-                "Miami Green", "Doral Office Plaza", "Waterford Centre", "Other"
+                "Miami Green", "Doral Office Plaza", "Waterford Centre", "4000 Ponce de Leon", "Other"
             ], key="cal_building")
             suites = st.text_input("Suites to Visit", placeholder="e.g. 200, 305, 410", key="cal_suites")
 

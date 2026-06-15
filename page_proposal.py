@@ -25,6 +25,12 @@ BUILDINGS_INFO = {
         "management": "Patton Real Estate Management\n6205 Waterford District, Suite 310\nMiami, FL 33126",
         "parking_rate": "$85 per space per month",
     },
+    "ponce_4000": {
+        "name": "4000 Ponce de Leon",
+        "address": "4000 Ponce de Leon Blvd, Coral Gables, FL 33146",
+        "management": "Patton Real Estate Management\n4000 Ponce de Leon Blvd, Suite 400\nCoral Gables, FL 33146",
+        "parking_rate": "$125 per space per month",
+    },
 }
 
 
