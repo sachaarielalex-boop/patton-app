@@ -62,6 +62,18 @@ STATUS_COLORS = {
 }
 
 
+def _fmt_money(v):
+    try:
+        v = float(v)
+    except (ValueError, TypeError):
+        return "$0"
+    if abs(v) >= 1e6:
+        return "${:.1f}M".format(v / 1e6)
+    if abs(v) >= 1e3:
+        return "${:.0f}K".format(v / 1e3)
+    return "${:,.0f}".format(v)
+
+
 def render_projects_page():
     from utils.style import inject_css, LOGO_B64
     inject_css()
@@ -81,6 +93,85 @@ def render_projects_page():
         '</div>'.format(logo=logo_tag),
         unsafe_allow_html=True,
     )
+
+    # ── Studio Projects (user-created) ─────────────────────
+    import shared_db
+    studio = shared_db.get("projects", [])
+
+    sh1, sh2 = st.columns([3, 1])
+    with sh1:
+        st.markdown(
+            '<div style="font-size:1rem;font-weight:800;color:var(--text-primary);margin:0.3rem 0;">'
+            'My Studio Projects</div>'
+            '<div style="font-size:0.74rem;color:var(--text-muted);margin-bottom:0.6rem;">'
+            'Developments you designed in Project Studio</div>',
+            unsafe_allow_html=True,
+        )
+    with sh2:
+        if st.button("+ New Project", key="proj_new_studio", type="primary", use_container_width=True):
+            st.session_state.pop("_proj", None)
+            st.session_state["_proj_step"] = 0
+            st.session_state["app_mode"] = "project_creator"
+            st.rerun()
+
+    if not studio:
+        st.markdown(
+            '<div class="card" style="text-align:center;padding:2rem;border:2px dashed var(--border);">'
+            '<div style="font-size:2rem;margin-bottom:0.5rem;">&#127959;</div>'
+            '<div style="font-size:0.9rem;font-weight:700;color:var(--text-primary);">No studio projects yet</div>'
+            '<div style="font-size:0.78rem;color:var(--text-tertiary);margin-top:0.3rem;">'
+            'Click "+ New Project" above, or use "Open Project Studio" from a Property Search.</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        for i in range(0, len(studio), 2):
+            scols = st.columns(2, gap="large")
+            for j, scol in enumerate(scols):
+                sidx = i + j
+                if sidx >= len(studio):
+                    break
+                sp = studio[sidx]
+                summ = sp.get("summary", {})
+                pcol = "var(--green)" if summ.get("profit", 0) > 0 else "var(--red)"
+                with scol:
+                    st.markdown(
+                        '<div class="card" style="padding:1.3rem;">'
+                        '<div style="font-size:1.05rem;font-weight:800;color:var(--text-primary);">{name}</div>'
+                        '<div style="font-size:0.74rem;color:var(--text-tertiary);margin:0.2rem 0 0.6rem;">{addr}</div>'
+                        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;">'
+                        '<div><div style="font-size:0.55rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);font-weight:700;">Units</div>'
+                        '<div style="font-size:1.05rem;font-weight:800;color:var(--text-primary);">{units}</div></div>'
+                        '<div><div style="font-size:0.55rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);font-weight:700;">Floors</div>'
+                        '<div style="font-size:1.05rem;font-weight:800;color:var(--text-primary);">{floors}</div></div>'
+                        '<div><div style="font-size:0.55rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);font-weight:700;">Profit</div>'
+                        '<div style="font-size:1.05rem;font-weight:800;color:{pcol};">{profit}</div></div>'
+                        '<div><div style="font-size:0.55rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);font-weight:700;">Margin</div>'
+                        '<div style="font-size:1.05rem;font-weight:800;color:var(--text-primary);">{margin}%</div></div>'
+                        '</div>'
+                        '<div style="font-size:0.62rem;color:var(--text-muted);margin-top:0.6rem;">Saved {saved}</div>'
+                        '</div>'.format(
+                            name=sp.get("name", "Untitled"), addr=sp.get("address") or "-",
+                            units=summ.get("units", "-"), floors=summ.get("floors", "-"),
+                            profit=_fmt_money(summ.get("profit", 0)), pcol=pcol,
+                            margin=summ.get("margin", 0), saved=sp.get("saved", ""),
+                        ),
+                        unsafe_allow_html=True,
+                    )
+                    ec1, ec2 = st.columns(2)
+                    with ec1:
+                        if st.button("Edit", key="proj_edit_{}".format(sidx), use_container_width=True):
+                            st.session_state["_proj"] = dict(sp.get("inputs", {}))
+                            st.session_state["_proj_step"] = 0
+                            st.session_state["app_mode"] = "project_creator"
+                            st.rerun()
+                    with ec2:
+                        if st.button("Delete", key="proj_del_{}".format(sidx), use_container_width=True):
+                            studio.pop(sidx)
+                            shared_db.put("projects", studio)
+                            st.rerun()
+
+    st.markdown('<div style="height:1.5rem;"></div><hr style="border-color:var(--border);">', unsafe_allow_html=True)
 
     # KPI row
     active = sum(1 for p in PROJECTS if p["status"] == "Active")

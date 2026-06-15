@@ -179,6 +179,11 @@ if st.session_state["app_mode"] == "rent":
     render_rent_page()
     st.stop()
 
+if st.session_state["app_mode"] == "project_creator":
+    from page_project_creator import render_project_creator
+    render_project_creator()
+    st.stop()
+
 # ── HOME PAGE ─────────────────────────────────────────────
 if st.session_state["app_mode"] == "home":
     st.markdown(
@@ -1113,6 +1118,37 @@ with tabs[4]:
             '<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(220,38,38,0.25);margin-right:4px;"></span>Zoning Envelope</span>'
             '</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── Create Our Project CTA ─────────────────────────────
+    st.markdown('<div style="height:0.8rem;"></div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div style="background:linear-gradient(135deg, var(--accent-soft), var(--bg-card));'
+        'border:1px solid var(--accent-border);border-radius:var(--radius);padding:1.3rem 1.6rem;'
+        'display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;">'
+        '<div><div style="font-size:1rem;font-weight:800;color:var(--text-primary);">Ready to design this development?</div>'
+        '<div style="font-size:0.78rem;color:var(--text-tertiary);margin-top:0.2rem;">'
+        'Open Project Studio — configure your build step by step on a live 3D site plan with zoning limits.</div></div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    def _launch_studio():
+        st.session_state["_project_seed"] = {
+            "address": st.session_state.get("address", ""),
+            "lat": geo.get("lat") if geo else None,
+            "lon": geo.get("lon") if geo else None,
+            "zoning": (nb.get("zoning", {}).get("zone") if nb else "") or "",
+            "lot_sf": dp_lot, "far": dp_far, "max_ht": dp_max_ht, "max_fl": dp_max_fl,
+            "res_pct": dp_res, "office_pct": dp_office, "retail_pct": dp_retail,
+            "avg_unit_sf": dp_avg_unit, "construction_psf": dp_cons,
+            "land_price": dp_land, "target_rent_res": dp_rent,
+        }
+        st.session_state["_proj_step"] = 0
+        st.session_state.pop("_proj", None)
+        st.session_state["app_mode"] = "project_creator"
+
+    st.button("Open Project Studio", key="dp_launch_studio", type="primary",
+              use_container_width=True, on_click=_launch_studio)
 
 
 # ── TAB 5: Market ──────────────────────────────────────────
