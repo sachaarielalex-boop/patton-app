@@ -179,12 +179,77 @@ BUILDINGS = [
 ]
 
 
+import copy
+import shared_db
+
+_LEASES_KEY = "suite_leases"
+
+
+def _lease_overrides():
+    """Tenant lease assignments saved at runtime, keyed 'building_id::suite'."""
+    return shared_db.get(_LEASES_KEY, {}) or {}
+
+
+def assign_suite_lease(building_id, suite, tenant, rate=None, lease_start=None,
+                       lease_end=None, annual_inc=None):
+    """Assign (or update) a tenant on a suite; persists across sessions."""
+    leases = _lease_overrides()
+    leases["{}::{}".format(building_id, suite)] = {
+        "tenant": tenant,
+        "rate": rate,
+        "lease_start": lease_start,
+        "lease_end": lease_end,
+        "annual_inc": annual_inc,
+        "status": "occupied",
+    }
+    shared_db.put(_LEASES_KEY, leases)
+
+
+def clear_suite_lease(building_id, suite):
+    """Remove a runtime lease assignment (suite reverts to base data)."""
+    leases = _lease_overrides()
+    leases.pop("{}::{}".format(building_id, suite), None)
+    shared_db.put(_LEASES_KEY, leases)
+
+
+def _apply_overrides(buildings):
+    """Return a copy of the portfolio with saved lease assignments applied
+    and occupancy/vacancy totals recomputed so every page stays in sync."""
+    leases = _lease_overrides()
+    if not leases:
+        return buildings
+    merged = copy.deepcopy(buildings)
+    for b in merged:
+        for s in b["suites"]:
+            ov = leases.get("{}::{}".format(b["id"], s["suite"]))
+            if not ov:
+                continue
+            s["tenant"] = ov.get("tenant") or s.get("tenant")
+            s["status"] = "occupied"
+            if ov.get("rate") is not None:
+                s["rate"] = ov["rate"]
+            if ov.get("lease_start") is not None:
+                s["lease_start"] = ov["lease_start"]
+            if ov.get("lease_end") is not None:
+                s["lease_end"] = ov["lease_end"]
+            if ov.get("annual_inc") is not None:
+                s["annual_inc"] = ov["annual_inc"]
+            s.pop("asking_rate", None)
+        occ = sum(s["rsf"] for s in b["suites"] if s["status"] == "occupied")
+        vac = sum(s["rsf"] for s in b["suites"] if s["status"] in ("vacant", "expired"))
+        b["occupied_rsf"] = occ
+        b["vacant_rsf"] = vac
+        if b.get("building_rsf"):
+            b["occupancy"] = int(round(occ / b["building_rsf"] * 100))
+    return merged
+
+
 def get_all_buildings():
-    return BUILDINGS
+    return _apply_overrides(BUILDINGS)
 
 
 def get_building(building_id):
-    for b in BUILDINGS:
+    for b in get_all_buildings():
         if b["id"] == building_id:
             return b
     return None
@@ -192,7 +257,7 @@ def get_building(building_id):
 
 def get_vacant_suites(building_id=None, min_sf=0, max_sf=999999, submarket=None):
     results = []
-    for b in BUILDINGS:
+    for b in get_all_buildings():
         if building_id and b["id"] != building_id:
             continue
         if submarket and submarket.lower() not in b["submarket"].lower():
@@ -221,18 +286,19 @@ def get_vacant_suites(building_id=None, min_sf=0, max_sf=999999, submarket=None)
 
 
 def get_portfolio_summary():
-    total_rsf = sum(b["building_rsf"] for b in BUILDINGS)
-    total_occupied = sum(b["occupied_rsf"] for b in BUILDINGS)
-    total_vacant = sum(b["vacant_rsf"] for b in BUILDINGS)
-    total_suites = sum(len(b["suites"]) for b in BUILDINGS)
-    vacant_suites = sum(1 for b in BUILDINGS for s in b["suites"] if s["status"] in ("vacant", "expired"))
+    buildings = get_all_buildings()
+    total_rsf = sum(b["building_rsf"] for b in buildings)
+    total_occupied = sum(b["occupied_rsf"] for b in buildings)
+    total_vacant = sum(b["vacant_rsf"] for b in buildings)
+    total_suites = sum(len(b["suites"]) for b in buildings)
+    vacant_suites = sum(1 for b in buildings for s in b["suites"] if s["status"] in ("vacant", "expired"))
     return {
-        "buildings": len(BUILDINGS),
+        "buildings": len(buildings),
         "total_rsf": total_rsf,
         "occupied_rsf": total_occupied,
         "vacant_rsf": total_vacant,
         "occupancy": int(total_occupied / total_rsf * 100) if total_rsf else 0,
         "total_suites": total_suites,
         "vacant_suites": vacant_suites,
-        "submarkets": list(set(b["submarket"] for b in BUILDINGS)),
+        "submarkets": list(set(b["submarket"] for b in buildings)),
     }

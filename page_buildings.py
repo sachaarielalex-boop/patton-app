@@ -4,7 +4,8 @@ import streamlit as st
 
 def render_buildings_page():
     from utils.style import inject_css, LOGO_B64
-    from utils.buildings_inventory import BUILDINGS
+    from utils.buildings_inventory import get_all_buildings
+    BUILDINGS = get_all_buildings()
     inject_css()
 
     if st.sidebar.button("Back to Home", key="bldg_back"):
@@ -41,6 +42,9 @@ def render_buildings_page():
         unsafe_allow_html=True,
     )
 
+    # New Customer – assign a tenant to a suite (updates the whole portfolio)
+    _render_new_customer(BUILDINGS)
+
     # Building selector
     bldg_names = [b["name"] for b in BUILDINGS]
     tabs = st.tabs(bldg_names)
@@ -48,6 +52,83 @@ def render_buildings_page():
     for tab, bldg in zip(tabs, BUILDINGS):
         with tab:
             _render_building(bldg)
+
+
+def _render_new_customer(buildings):
+    import datetime
+    from utils.buildings_inventory import assign_suite_lease
+
+    with st.expander("New Customer  —  Lease a Suite", expanded=False):
+        st.markdown(
+            '<div style="font-size:0.78rem;color:var(--text-tertiary);margin-bottom:0.6rem;">'
+            'Assign a tenant to an available suite. This updates occupancy, the suite directory, '
+            'and availability across the whole app.</div>',
+            unsafe_allow_html=True,
+        )
+
+        bnames = [b["name"] for b in buildings]
+        sel_bname = st.selectbox("Building", bnames, key="nc_building")
+        bldg = next((b for b in buildings if b["name"] == sel_bname), None)
+        if not bldg:
+            return
+
+        avail = [s for s in bldg["suites"] if s["status"] in ("vacant", "expired")]
+        if not avail:
+            st.info("No available suites in {}. All suites are leased.".format(sel_bname))
+            return
+
+        suite_labels = [
+            "Suite {} — {:,} RSF{}".format(
+                s["suite"], s["rsf"],
+                " (asking ${:.2f})".format(s["asking_rate"]) if s.get("asking_rate") else "",
+            )
+            for s in avail
+        ]
+        sel_idx = st.selectbox(
+            "Available Suite", range(len(avail)),
+            format_func=lambda i: suite_labels[i], key="nc_suite",
+        )
+        suite = avail[sel_idx]
+
+        c1, c2 = st.columns(2)
+        with c1:
+            tenant = st.text_input("Tenant Name", key="nc_tenant")
+            lease_start = st.date_input("Lease Start", value=datetime.date.today(), key="nc_start")
+            lease_end = st.date_input(
+                "Lease End",
+                value=datetime.date.today() + datetime.timedelta(days=365 * 5),
+                key="nc_end",
+            )
+        with c2:
+            default_rate = float(suite.get("asking_rate") or 0.0)
+            rate = st.number_input(
+                "Base Rate ($/RSF)", min_value=0.0, value=default_rate, step=0.5, key="nc_rate",
+            )
+            annual_inc = st.number_input(
+                "Annual Increase (%)", min_value=0, max_value=20, value=3, step=1, key="nc_inc",
+            )
+
+        if st.button("Add Customer & Lease Suite", type="primary", use_container_width=True, key="nc_save"):
+            if not tenant.strip():
+                st.error("Enter the tenant name.")
+            elif lease_end <= lease_start:
+                st.error("Lease End must be after Lease Start.")
+            else:
+                assign_suite_lease(
+                    building_id=bldg["id"],
+                    suite=suite["suite"],
+                    tenant=tenant.strip(),
+                    rate=round(rate, 2) if rate else None,
+                    lease_start=lease_start.strftime("%-m/%-d/%Y"),
+                    lease_end=lease_end.strftime("%-m/%-d/%Y"),
+                    annual_inc=int(annual_inc) if annual_inc else None,
+                )
+                st.success(
+                    "{} leased Suite {} at {}. Portfolio updated.".format(
+                        tenant.strip(), suite["suite"], sel_bname
+                    )
+                )
+                st.rerun()
 
 
 def _render_building(bldg):

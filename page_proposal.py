@@ -140,8 +140,8 @@ def render_proposal_page():
 
     # Step 1: Choose building
     st.markdown("### 1. Select Building")
-    cols = st.columns(3)
     building_keys = list(BUILDINGS_INFO.keys())
+    cols = st.columns(len(building_keys))
     sel_key = st.session_state.get("prop_building", None)
 
     for i, bk in enumerate(building_keys):
