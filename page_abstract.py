@@ -2,6 +2,7 @@
 import streamlit as st
 import os
 import io
+import base64
 import datetime
 import threading
 import shared_db
@@ -364,11 +365,10 @@ def _render_edit_fields(fields, filename=""):
             "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
             "fields": dict(fields),
         }
-        # Store docx bytes in session for download from tenant folder
+        # Store the actual .docx in the folder so the document truly persists
+        # and is downloadable from any device/session (not just this one).
         if docx_bytes:
-            if "_tenant_docx" not in st.session_state:
-                st.session_state["_tenant_docx"] = {}
-            st.session_state["_tenant_docx"][fname] = docx_bytes
+            doc_entry["docx_b64"] = base64.b64encode(docx_bytes).decode("ascii")
         folders[folder_target].append(doc_entry)
         shared_db.put("tenant_folders", folders)
         st.success("Saved to tenant folder: {}  —  open Tenant Folders to view it.".format(folder_target))

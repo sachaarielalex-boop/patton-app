@@ -2,6 +2,7 @@
 import streamlit as st
 import os
 import io
+import base64
 import datetime
 import shared_db
 
@@ -279,13 +280,17 @@ def render_proposal_page():
         if folder_target and st.button("Save to '{}'".format(folder_target), key="prop_tf_save", type="primary"):
             if folder_target not in folders:
                 folders[folder_target] = []
-            folders[folder_target].append({
+            entry = {
                 "type": "Lease Proposal",
                 "tenant": tenant_name,
                 "filename": filename,
                 "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
                 "fields": {"building": bi["name"], "suite": suite_number, "rate": base_rate, "term": lease_term},
-            })
+            }
+            # Store the actual .docx so the proposal is downloadable from the folder.
+            if docx_bytes:
+                entry["docx_b64"] = base64.b64encode(docx_bytes).decode("ascii")
+            folders[folder_target].append(entry)
             shared_db.put("tenant_folders", folders)
             st.success("Saved to tenant folder: {}".format(folder_target))
 

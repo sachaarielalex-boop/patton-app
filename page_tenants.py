@@ -1,7 +1,10 @@
 """Tenant Folder page – organize lease documents by tenant."""
 import streamlit as st
+import base64
 import datetime
 import shared_db
+
+_DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
 def render_tenants_page():
@@ -105,18 +108,27 @@ def render_tenants_page():
                                 unsafe_allow_html=True,
                             )
                         with dc2:
-                            # Re-generate and download the abstract
-                            if doc.get("fields") and doc.get("type") in ("Lease Abstract", "Lease Scan"):
+                            docx_bytes = None
+                            # Prefer the actual stored document (works for any type).
+                            if doc.get("docx_b64"):
+                                try:
+                                    docx_bytes = base64.b64decode(doc["docx_b64"])
+                                except Exception:
+                                    docx_bytes = None
+                            # Fall back to regenerating older abstracts from fields.
+                            if docx_bytes is None and doc.get("fields") and doc.get("type") in ("Lease Abstract", "Lease Scan"):
                                 try:
                                     from page_abstract import _generate_abstract_docx
                                     docx_bytes = _generate_abstract_docx(doc["fields"])
-                                    st.download_button(
-                                        "Download", docx_bytes, doc["filename"],
-                                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                        key="ten_dl_{}_{}".format(folder_name[:10], i),
-                                    )
                                 except Exception:
-                                    st.markdown('<div style="font-size:0.7rem;color:var(--text-muted);">-</div>', unsafe_allow_html=True)
+                                    docx_bytes = None
+                            if docx_bytes is not None:
+                                st.download_button(
+                                    "Download", docx_bytes, doc["filename"], _DOCX_MIME,
+                                    key="ten_dl_{}_{}".format(folder_name[:10], i),
+                                )
+                            else:
+                                st.markdown('<div style="font-size:0.7rem;color:var(--text-muted);">-</div>', unsafe_allow_html=True)
                         with dc3:
                             if st.button("Remove", key="ten_rm_{}_{}".format(folder_name[:10], i)):
                                 docs.pop(i)
