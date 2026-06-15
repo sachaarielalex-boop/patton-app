@@ -189,7 +189,7 @@ if st.session_state["app_mode"] == "home":
     st.markdown(
         '<style>'
         'section[data-testid="stSidebar"] { display: none !important; }'
-        '.block-container { max-width: 960px !important; padding-top: 0 !important; }'
+        '.block-container { max-width: 960px !important; padding-top: 3rem !important; }'
         '</style>',
         unsafe_allow_html=True,
     )

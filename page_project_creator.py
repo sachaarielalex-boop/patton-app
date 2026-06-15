@@ -92,35 +92,68 @@ def _stepper_html(active):
     )
 
 
+def _rect(lat, lon, side_ft):
+    """Square footprint (side in feet) returned as polygon ring of [lon, lat] points."""
+    half = side_ft / 2.0
+    dlat = half / 364000.0
+    dlon = half / (364000.0 * max(math.cos(math.radians(lat)), 0.01))
+    return [
+        [lon - dlon, lat - dlat],
+        [lon + dlon, lat - dlat],
+        [lon + dlon, lat + dlat],
+        [lon - dlon, lat + dlat],
+        [lon - dlon, lat - dlat],
+    ]
+
+
 def _massing_deck(p, dp):
     try:
         import pydeck as pdk
     except ImportError:
         return None
     lat, lon = p["lat"], p["lon"]
-    radius = max(14, int(math.sqrt(max(dp["floor_plate"], 100)) / 3))
+    # ft -> meters for extrusion, slightly exaggerated for a clear massing read.
+    HSCALE = 0.45
+    lot_side = math.sqrt(max(p["lot_sf"], 100))
+    bld_side = math.sqrt(max(dp["floor_plate"], 100))
+    over = dp["building_height_ft"] > p["max_ht"]
+    bld_color = [220, 38, 38, 225] if over else [37, 99, 235, 225]
+
+    lot = [{"polygon": _rect(lat, lon, lot_side), "name": "Lot Boundary"}]
     building = [{
-        "lat": lat, "lon": lon, "height": dp["building_height_ft"],
-        "color": [37, 99, 235, 200], "name": "Proposed Building",
+        "polygon": _rect(lat, lon, bld_side),
+        "elev": dp["building_height_ft"] * HSCALE,
+        "color": bld_color, "name": "Proposed Building",
+        "ht": dp["building_height_ft"], "fl": dp["est_floors"],
     }]
     envelope = [{
-        "lat": lat, "lon": lon + 0.00035, "height": p["max_ht"],
-        "color": [220, 38, 38, 55], "name": "Zoning Limit",
+        "polygon": _rect(lat, lon, lot_side * 0.96),
+        "elev": p["max_ht"] * HSCALE,
+        "name": "Zoning Envelope", "ht": p["max_ht"], "fl": "-",
     }]
-    b_layer = pdk.Layer(
-        "ColumnLayer", data=building, get_position=["lon", "lat"],
-        get_elevation="height", elevation_scale=50, get_fill_color="color",
-        radius=radius, pickable=True,
+
+    lot_layer = pdk.Layer(
+        "PolygonLayer", data=lot, get_polygon="polygon", extruded=False,
+        stroked=True, filled=True, get_fill_color=[148, 163, 184, 55],
+        get_line_color=[100, 116, 139, 200], line_width_min_pixels=2, pickable=False,
     )
-    e_layer = pdk.Layer(
-        "ColumnLayer", data=envelope, get_position=["lon", "lat"],
-        get_elevation="height", elevation_scale=50, get_fill_color="color",
-        radius=radius, pickable=True,
+    env_layer = pdk.Layer(
+        "PolygonLayer", data=envelope, get_polygon="polygon", extruded=True,
+        get_elevation="elev", wireframe=True, filled=True,
+        get_fill_color=[220, 38, 38, 22], get_line_color=[220, 38, 38, 170],
+        line_width_min_pixels=1, pickable=True,
     )
-    view = pdk.ViewState(latitude=lat, longitude=lon, zoom=17, pitch=55, bearing=-20)
+    bld_layer = pdk.Layer(
+        "PolygonLayer", data=building, get_polygon="polygon", extruded=True,
+        get_elevation="elev", wireframe=True, filled=True,
+        get_fill_color="color", get_line_color=[255, 255, 255, 120],
+        line_width_min_pixels=1, pickable=True,
+    )
+    view = pdk.ViewState(latitude=lat, longitude=lon, zoom=17.5, pitch=58, bearing=-25)
     return pdk.Deck(
-        layers=[b_layer, e_layer], initial_view_state=view, map_style="light",
-        tooltip={"text": "{name}\nHeight: {height} ft"},
+        layers=[lot_layer, env_layer, bld_layer], initial_view_state=view,
+        map_style="light",
+        tooltip={"text": "{name}\n{ht} ft \u00b7 {fl} floors"},
     )
 
 
@@ -192,8 +225,14 @@ def _set(key):
 
 
 def _num(label, key, p, step=1, minv=0, fmt=None):
+    val = p[key]
+    # Streamlit requires value/step/min_value to share the same numeric type.
+    if isinstance(step, float) or isinstance(val, float) or isinstance(minv, float):
+        val, step, minv = float(val), float(step), float(minv)
+    else:
+        val, step, minv = int(val), int(step), int(minv)
     st.number_input(
-        label, value=p[key], step=step, min_value=minv,
+        label, value=val, step=step, min_value=minv,
         key="pc_" + key, on_change=_set(key),
     )
 
