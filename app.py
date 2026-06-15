@@ -50,12 +50,12 @@ if not st.session_state["splash_done"]:
         '.pat-line { height: 3px; background: linear-gradient(90deg, #3b82f6, #d4a853); border-radius: 2px; margin: 1.1rem auto; animation: pat-line 1s ease 0.3s both; }'
         '.pat-sub { animation: pat-fade 0.8s ease 0.5s both; }'
         '.pat-foot { animation: pat-fade 1s ease 0.9s both; }'
-        # Password input — glassmorphism
-        '.stTextInput input { background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.14) !important; '
-        'color: #ffffff !important; border-radius: 12px !important; padding: 0.85rem 1.1rem !important; font-size: 0.95rem !important; '
-        'backdrop-filter: blur(10px); transition: all 0.25s ease; }'
-        '.stTextInput input:focus { border-color: rgba(96,165,250,0.7) !important; box-shadow: 0 0 0 4px rgba(59,130,246,0.18) !important; background: rgba(255,255,255,0.09) !important; }'
-        '.stTextInput input::placeholder { color: rgba(255,255,255,0.4) !important; }'
+        # Password input — solid dark for clear white text
+        '.stTextInput input { background: rgba(5,10,22,0.85) !important; border: 1px solid rgba(255,255,255,0.22) !important; '
+        'color: #ffffff !important; border-radius: 12px !important; padding: 0.85rem 1.1rem !important; font-size: 1.15rem !important; '
+        'font-weight: 700 !important; letter-spacing: 3px !important; transition: all 0.25s ease; -webkit-text-fill-color: #ffffff !important; }'
+        '.stTextInput input:focus { border-color: rgba(96,165,250,0.8) !important; box-shadow: 0 0 0 4px rgba(59,130,246,0.22) !important; background: rgba(5,10,22,0.92) !important; }'
+        '.stTextInput input::placeholder { color: rgba(255,255,255,0.45) !important; font-weight: 400 !important; letter-spacing: 0.5px !important; -webkit-text-fill-color: rgba(255,255,255,0.45) !important; }'
         # Enter button — gradient + shimmer
         '.stButton > button { position: relative; overflow: hidden; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 60%, #b8862f 140%) !important; '
         'border: none !important; border-radius: 12px !important; color: #fff !important; font-weight: 700 !important; letter-spacing: 2px !important; '
@@ -109,18 +109,21 @@ if not st.session_state["splash_done"]:
 
 inject_css()
 
-# Top bar: news + theme toggle
+# Top bar: news + theme toggle (use on_click callbacks — reliable on cloud)
+def _go_news():
+    st.session_state["app_mode"] = "news"
+
+def _toggle_theme():
+    cur = st.session_state.get("theme", "light")
+    st.session_state["theme"] = "dark" if cur == "light" else "light"
+
 _tb_spacer, _tb_news, _tb_theme = st.columns([7, 1, 1])
 with _tb_news:
-    if st.button("News", key="top_news", use_container_width=True):
-        st.session_state["app_mode"] = "news"
-        st.rerun()
+    st.button("News", key="top_news", use_container_width=True, on_click=_go_news)
 with _tb_theme:
     theme = st.session_state.get("theme", "light")
     icon_label = "Dark" if theme == "light" else "Light"
-    if st.button(icon_label, key="theme_btn", use_container_width=True):
-        st.session_state["theme"] = "dark" if theme == "light" else "light"
-        st.rerun()
+    st.button(icon_label, key="theme_btn", use_container_width=True, on_click=_toggle_theme)
 
 # ── App Mode Routing ──────────────────────────────────────
 if "app_mode" not in st.session_state:
