@@ -109,7 +109,22 @@ if not st.session_state["splash_done"]:
 
 inject_css()
 
-# Top bar: news + theme toggle (use on_click callbacks — reliable on cloud)
+# Full-screen / focus mode: hide Streamlit's chrome so only the app shows.
+if st.session_state.get("fullscreen"):
+    st.markdown(
+        '<style>'
+        'header[data-testid="stHeader"] { display:none !important; }'
+        '[data-testid="stToolbar"] { display:none !important; }'
+        '[data-testid="stStatusWidget"] { display:none !important; }'
+        '#MainMenu { display:none !important; }'
+        'footer { display:none !important; }'
+        '[data-testid="stDecoration"] { display:none !important; }'
+        '.block-container { padding-top:1.2rem !important; }'
+        '</style>',
+        unsafe_allow_html=True,
+    )
+
+# Top bar: news + theme + fullscreen (use on_click callbacks — reliable on cloud)
 def _go_news():
     st.session_state["app_mode"] = "news"
 
@@ -117,13 +132,20 @@ def _toggle_theme():
     cur = st.session_state.get("theme", "light")
     st.session_state["theme"] = "dark" if cur == "light" else "light"
 
-_tb_spacer, _tb_news, _tb_theme = st.columns([7, 1, 1])
+def _toggle_full():
+    st.session_state["fullscreen"] = not st.session_state.get("fullscreen", False)
+
+_tb_spacer, _tb_news, _tb_theme, _tb_full = st.columns([6, 1, 1, 1])
 with _tb_news:
     st.button("News", key="top_news", use_container_width=True, on_click=_go_news)
 with _tb_theme:
     theme = st.session_state.get("theme", "light")
     icon_label = "Dark" if theme == "light" else "Light"
     st.button(icon_label, key="theme_btn", use_container_width=True, on_click=_toggle_theme)
+with _tb_full:
+    full_label = "Exit" if st.session_state.get("fullscreen") else "Full"
+    st.button(full_label, key="full_btn", use_container_width=True, on_click=_toggle_full,
+              help="Full screen — hide menus and show only the app")
 
 # ── App Mode Routing ──────────────────────────────────────
 if "app_mode" not in st.session_state:
