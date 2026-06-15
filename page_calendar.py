@@ -1,7 +1,12 @@
 """Tenant Calendar – schedule visits, track tours, generate follow-up emails."""
 import streamlit as st
 import datetime
+import calendar as _calmod
 import shared_db
+
+WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+MONTHS = ["", "January", "February", "March", "April", "May", "June",
+          "July", "August", "September", "October", "November", "December"]
 
 
 def _get_visits():
@@ -10,6 +15,69 @@ def _get_visits():
 
 def _save_visits(visits):
     shared_db.put("tenant_visits", visits)
+
+
+def _month_calendar_html(visits, today, year, month):
+    """Render a month grid with visit markers coloured by status."""
+    by_day = {}
+    for v in visits:
+        try:
+            d = datetime.date.fromisoformat(v["date"])
+        except (ValueError, KeyError):
+            continue
+        if d.year == year and d.month == month:
+            by_day.setdefault(d.day, []).append(v)
+
+    head = "".join(
+        '<div style="text-align:center;font-size:0.62rem;font-weight:700;letter-spacing:0.5px;'
+        'text-transform:uppercase;color:var(--text-muted);padding:0.3rem 0;">{}</div>'.format(d)
+        for d in WEEKDAYS
+    )
+
+    cells = ""
+    weeks = _calmod.Calendar(firstweekday=6).monthdayscalendar(year, month)
+    for week in weeks:
+        for day in week:
+            if day == 0:
+                cells += ('<div style="min-height:74px;border-radius:8px;'
+                          'background:transparent;"></div>')
+                continue
+            is_today = (year == today.year and month == today.month and day == today.day)
+            dv = by_day.get(day, [])
+            chips = ""
+            for v in dv[:2]:
+                if v.get("status") == "Completed":
+                    c = "var(--green)"
+                elif datetime.date(year, month, day) < today:
+                    c = "var(--amber)"
+                else:
+                    c = "var(--accent)"
+                chips += (
+                    '<div style="display:flex;align-items:center;gap:3px;font-size:0.6rem;'
+                    'color:var(--text-secondary);line-height:1.3;white-space:nowrap;overflow:hidden;'
+                    'text-overflow:ellipsis;">'
+                    '<span style="flex:0 0 5px;width:5px;height:5px;border-radius:50%;background:{c};"></span>'
+                    '<span style="overflow:hidden;text-overflow:ellipsis;">{t} {tm}</span></div>'
+                ).format(c=c, t=v.get("tenant", "")[:9], tm=v.get("time", ""))
+            if len(dv) > 2:
+                chips += ('<div style="font-size:0.58rem;color:var(--text-muted);">+{} more</div>'
+                          .format(len(dv) - 2))
+            daynum_col = "#fff" if is_today else "var(--text-secondary)"
+            daynum_bg = "background:var(--accent);" if is_today else ""
+            cell_border = "border:1px solid var(--accent);" if dv else "border:1px solid var(--border);"
+            cells += (
+                '<div style="min-height:74px;border-radius:8px;{cb}background:var(--bg-card);'
+                'padding:0.3rem;overflow:hidden;">'
+                '<div style="display:inline-flex;align-items:center;justify-content:center;'
+                'min-width:19px;height:19px;border-radius:50%;{db}font-size:0.66rem;font-weight:700;'
+                'color:{dc};margin-bottom:0.15rem;">{day}</div>'
+                '{chips}</div>'
+            ).format(cb=cell_border, db=daynum_bg, dc=daynum_col, day=day, chips=chips)
+
+    return (
+        '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:0.2rem;">{head}</div>'
+        '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">{cells}</div>'
+    ).format(head=head, cells=cells)
 
 
 def render_calendar_page():
@@ -100,6 +168,50 @@ def render_calendar_page():
 
     # ── Tab 2: Upcoming ──
     with tab2:
+        # Month calendar with navigation.
+        if "cal_view_year" not in st.session_state:
+            st.session_state["cal_view_year"] = today.year
+            st.session_state["cal_view_month"] = today.month
+        vy = st.session_state["cal_view_year"]
+        vm = st.session_state["cal_view_month"]
+
+        nav_prev, nav_title, nav_next, nav_today = st.columns([1, 4, 1, 1])
+        with nav_prev:
+            if st.button("\u25c0", key="cal_prev_month", use_container_width=True):
+                vm -= 1
+                if vm < 1:
+                    vm, vy = 12, vy - 1
+                st.session_state["cal_view_month"], st.session_state["cal_view_year"] = vm, vy
+                st.rerun()
+        with nav_next:
+            if st.button("\u25b6", key="cal_next_month", use_container_width=True):
+                vm += 1
+                if vm > 12:
+                    vm, vy = 1, vy + 1
+                st.session_state["cal_view_month"], st.session_state["cal_view_year"] = vm, vy
+                st.rerun()
+        with nav_today:
+            if st.button("Today", key="cal_today_btn", use_container_width=True):
+                st.session_state["cal_view_month"], st.session_state["cal_view_year"] = today.month, today.year
+                st.rerun()
+        with nav_title:
+            st.markdown(
+                '<div style="text-align:center;font-size:1.05rem;font-weight:800;'
+                'color:var(--text-primary);padding-top:0.35rem;">{} {}</div>'.format(MONTHS[vm], vy),
+                unsafe_allow_html=True,
+            )
+
+        st.markdown(_month_calendar_html(visits, today, vy, vm), unsafe_allow_html=True)
+        st.markdown(
+            '<div style="display:flex;gap:1rem;font-size:0.66rem;color:var(--text-tertiary);margin:0.6rem 0 0.4rem;">'
+            '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-right:4px;"></span>Scheduled</span>'
+            '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--amber);margin-right:4px;"></span>Past due</span>'
+            '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);margin-right:4px;"></span>Completed</span>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown('<div style="height:0.6rem;"></div>', unsafe_allow_html=True)
+
         if not visits:
             st.info("No visits scheduled yet.")
         else:
