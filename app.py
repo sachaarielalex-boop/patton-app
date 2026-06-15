@@ -588,7 +588,7 @@ st.markdown(
 )
 
 # ── Tabs ───────────────────────────────────────────────────
-tab_names = ["Overview", "Map", "Property", "Zoning", "Dev Plan", "Market", "Financial", "Valuation", "Risk", "AI Summary", "Best Rec", "Export"]
+tab_names = ["Overview", "Map", "Property", "Zoning", "Dev Plan", "Market", "Financial", "Valuation", "Risk", "AI Summary", "Best Rec", "Export", "Sales & Value"]
 tabs = st.tabs(tab_names)
 
 # ── TAB 0: Overview ───────────────────────────────────────
@@ -1869,3 +1869,173 @@ with tabs[11]:
     with st.expander("Report Preview (Markdown)"):
         preview_md = export_markdown(report_data, st.session_state.address, scores, st.session_state.financials, nb_name)
         st.code(preview_md, language="markdown")
+
+
+# ── TAB 12: Sales & Value ─────────────────────────────────
+with tabs[12]:
+    st.markdown(
+        '<div class="card"><div class="card-title">Subject Property &mdash; Value &amp; Sale History '
+        '<span class="source-tag">MIAMI-DADE COUNTY</span></div>',
+        unsafe_allow_html=True,
+    )
+
+    # Subject building size from county parcel
+    subj_sqft = 0
+    if parcel:
+        for _fld in ("BUILDING AREA", "LOT SIZE"):
+            try:
+                _v = int(str(parcel.get(_fld) or 0).replace(",", ""))
+                if _v > 0:
+                    subj_sqft = _v
+                    break
+            except (ValueError, TypeError):
+                pass
+
+    # Real nearby sold / active comps (Redfin / MLS) — cached
+    val_sold, val_active = [], []
+    if geo and geo.get("lat"):
+        try:
+            val_sold = fetch_comps_around(geo["lat"], geo["lon"], 1.0, "sold")
+        except Exception:
+            val_sold = []
+        try:
+            val_active = fetch_comps_around(geo["lat"], geo["lon"], 1.0, "active")
+        except Exception:
+            val_active = []
+
+    def _median(vals):
+        vals = sorted(v for v in vals if v)
+        if not vals:
+            return None
+        n = len(vals)
+        return vals[n // 2] if n % 2 else (vals[n // 2 - 1] + vals[n // 2]) / 2
+
+    sold_psf = _median([c.get("psf") for c in val_sold if c.get("psf")])
+    active_psf = _median([c.get("psf") for c in val_active if c.get("psf")])
+    est_value = int(sold_psf * subj_sqft) if (sold_psf and subj_sqft) else None
+    if active_psf and subj_sqft:
+        est_asking = int(active_psf * subj_sqft)
+    elif est_value:
+        est_asking = int(est_value * 1.04)
+    else:
+        est_asking = None
+
+    # Last recorded sale (subject) from county parcel
+    last_price, last_date, owner, folio = None, "", "", ""
+    if parcel:
+        try:
+            last_price = int(str(parcel.get("SALE PRICE") or 0).replace(",", ""))
+            if last_price <= 0:
+                last_price = None
+        except (ValueError, TypeError):
+            last_price = None
+        last_date = parcel.get("SALE DATE") or ""
+        _o1 = parcel.get("true_owner1") or ""
+        _o2 = parcel.get("true_owner2") or ""
+        owner = _o1 + ((" & " + _o2) if _o2 else "")
+        folio = (parcel.get("FOLIO #") or "").replace("-", "")
+
+    value_cards = []
+    value_cards.append(kpi("Last Recorded Sale", format_currency(last_price) if last_price else "N/A",
+                           last_date or "County deed record"))
+    value_cards.append(kpi("Estimated Value", format_currency(est_value) if est_value else "N/A",
+                           "{} sold comps".format(len(val_sold)) if est_value else "Insufficient data"))
+    value_cards.append(kpi("Est. Asking Price", format_currency(est_asking) if est_asking else "N/A",
+                           "{} active listings".format(len(val_active)) if est_asking else "Insufficient data"))
+    if est_value and last_price:
+        _appr = (est_value - last_price) / last_price * 100
+        value_cards.append(kpi("Appreciation Since Sale", "{:+.0f}%".format(_appr), "vs last recorded sale"))
+    st.markdown('<div class="kpi-grid">{}</div>'.format("".join(value_cards)), unsafe_allow_html=True)
+
+    info_rows = ""
+    if owner:
+        info_rows += tr("Current Owner (Grantee)", owner)
+    if parcel and parcel.get("LAND USE"):
+        info_rows += tr("Land Use", parcel.get("LAND USE"))
+    if parcel and parcel.get("YEAR BUILT") and str(parcel.get("YEAR BUILT")) not in ("0", ""):
+        info_rows += tr("Year Built", parcel.get("YEAR BUILT"))
+    if subj_sqft:
+        info_rows += tr("Building / Lot Area", "{:,} sqft".format(subj_sqft))
+    if parcel and parcel.get("FOLIO #"):
+        info_rows += tr("Folio #", parcel.get("FOLIO #"))
+    if info_rows:
+        st.markdown('<table class="dtable">{}</table>'.format(info_rows), unsafe_allow_html=True)
+
+    if folio:
+        st.markdown(
+            '<div class="alert-info" style="margin-top:0.6rem;">'
+            'For the complete deed history (grantor &rarr; grantee chain with all prior sale prices &amp; dates), '
+            'open the official Miami-Dade Property Appraiser record:<br>'
+            '<a href="https://www.miamidade.gov/Apps/PA/propertysearch/#/?folio={f}" target="_blank" '
+            'style="color:var(--accent);font-weight:700;">View county record for Folio {fd} &rarr;</a>'
+            '</div>'.format(f=folio, fd=parcel.get("FOLIO #")),
+            unsafe_allow_html=True,
+        )
+    elif st.session_state.get("address"):
+        st.markdown(
+            '<div class="alert-info" style="margin-top:0.6rem;">'
+            'Look up the official deed history (who sold to whom, prior prices) on the '
+            '<a href="https://www.miamidade.gov/Apps/PA/propertysearch/#/" target="_blank" '
+            'style="color:var(--accent);font-weight:700;">Miami-Dade Property Appraiser &rarr;</a>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Most recent nearby sales (real)
+    if val_sold:
+        st.markdown(
+            '<div class="card"><div class="card-title">Most Recent Sales Nearby '
+            '<span class="source-tag">REDFIN / MLS</span></div>',
+            unsafe_allow_html=True,
+        )
+        _srt = sorted(val_sold, key=lambda c: c.get("sold_date") or "", reverse=True)
+        _r = ('<table class="dtable"><tr>'
+              '<td class="dk">Address</td><td class="dk">Sold Date</td>'
+              '<td class="dk">Price</td><td class="dk">$/sqft</td><td class="dk">Distance</td></tr>')
+        for c in _srt[:15]:
+            _dist = _distance_mi(geo["lat"], geo["lon"], c["lat"], c["lon"]) if (c.get("lat") and c.get("lon")) else None
+            _r += (
+                '<tr><td class="dv" style="text-align:left;font-weight:600;">{a}</td>'
+                '<td class="dv">{d}</td><td class="dv">{p}</td><td class="dv">{psf}</td><td class="dv">{dist}</td></tr>'
+            ).format(
+                a=c.get("address", "-"), d=c.get("sold_date", "-"),
+                p=format_currency(c.get("price")) if c.get("price") else "-",
+                psf="${:.0f}".format(c["psf"]) if c.get("psf") else "-",
+                dist="{:.2f} mi".format(_dist) if _dist is not None else "-",
+            )
+        _r += "</table>"
+        st.markdown(_r + "</div>", unsafe_allow_html=True)
+
+    # Current asking prices nearby (real)
+    if val_active:
+        st.markdown(
+            '<div class="card"><div class="card-title">Current Asking Prices Nearby '
+            '<span class="source-tag">REDFIN / MLS</span></div>',
+            unsafe_allow_html=True,
+        )
+        _srt = sorted(val_active, key=lambda c: c.get("dom") if c.get("dom") is not None else 9999)
+        _r = ('<table class="dtable"><tr>'
+              '<td class="dk">Address</td><td class="dk">Asking</td>'
+              '<td class="dk">$/sqft</td><td class="dk">Days on Mkt</td><td class="dk">Distance</td></tr>')
+        for c in _srt[:15]:
+            _dist = _distance_mi(geo["lat"], geo["lon"], c["lat"], c["lon"]) if (c.get("lat") and c.get("lon")) else None
+            _r += (
+                '<tr><td class="dv" style="text-align:left;font-weight:600;">{a}</td>'
+                '<td class="dv">{p}</td><td class="dv">{psf}</td><td class="dv">{dom}</td><td class="dv">{dist}</td></tr>'
+            ).format(
+                a=c.get("address", "-"),
+                p=format_currency(c.get("price")) if c.get("price") else "-",
+                psf="${:.0f}".format(c["psf"]) if c.get("psf") else "-",
+                dom=c.get("dom") if c.get("dom") is not None else "-",
+                dist="{:.2f} mi".format(_dist) if _dist is not None else "-",
+            )
+        _r += "</table>"
+        st.markdown(_r + "</div>", unsafe_allow_html=True)
+
+    if not val_sold and not val_active and not last_price:
+        st.markdown(
+            '<div class="alert-warn">No live sales data available for this location right now. '
+            'Use the county record link above for official records.</div>',
+            unsafe_allow_html=True,
+        )
