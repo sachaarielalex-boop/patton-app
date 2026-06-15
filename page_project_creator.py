@@ -106,6 +106,11 @@ def _rect(lat, lon, side_ft):
     ]
 
 
+def _rect3d(lat, lon, side_ft, z):
+    """Footprint ring with a constant elevation z (meters) for 3D path layers."""
+    return [pt + [z] for pt in _rect(lat, lon, side_ft)]
+
+
 def _massing_deck(p, dp):
     try:
         import pydeck as pdk
@@ -118,11 +123,12 @@ def _massing_deck(p, dp):
     bld_color = [220, 38, 38, 235] if over else [37, 99, 235, 235]
     # Building covers ~88% of the lot (typical setback).
     bld_side = lot_side * 0.88
+    bld_h_m = dp["building_height_ft"] * HSCALE
 
     lot = [{"polygon": _rect(lat, lon, lot_side), "name": "Lot Boundary"}]
     building = [{
         "polygon": _rect(lat, lon, bld_side),
-        "elev": dp["building_height_ft"] * HSCALE,
+        "elev": bld_h_m,
         "color": bld_color, "name": "Proposed Building",
         "ht": dp["building_height_ft"], "fl": dp["est_floors"],
     }]
@@ -131,6 +137,18 @@ def _massing_deck(p, dp):
         "elev": p["max_ht"] * HSCALE,
         "name": "Zoning Envelope", "ht": p["max_ht"], "fl": "limit",
     }]
+
+    # Horizontal floor lines so the mass reads as a stacked building, not a block.
+    floors = max(int(dp["est_floors"]), 1)
+    floor_h_ft = (dp["building_height_ft"] / floors) if floors else 11
+    line_col = [255, 255, 255, 150] if not over else [255, 220, 220, 150]
+    floor_paths = []
+    step = max(1, floors // 40)  # cap rings drawn on very tall buildings
+    for i in range(1, floors):
+        if i % step:
+            continue
+        z = i * floor_h_ft * HSCALE
+        floor_paths.append({"path": _rect3d(lat, lon, bld_side, z)})
 
     lot_layer = pdk.Layer(
         "PolygonLayer", data=lot, get_polygon="polygon", extruded=False,
@@ -145,13 +163,17 @@ def _massing_deck(p, dp):
     )
     bld_layer = pdk.Layer(
         "PolygonLayer", data=building, get_polygon="polygon", extruded=True,
-        get_elevation="elev", wireframe=True, filled=True,
+        get_elevation="elev", wireframe=False, filled=True,
         get_fill_color="color", get_line_color=[255, 255, 255, 90],
         line_width_min_pixels=1, pickable=True,
     )
+    floor_layer = pdk.Layer(
+        "PathLayer", data=floor_paths, get_path="path",
+        get_color=line_col, width_min_pixels=1, get_width=1, pickable=False,
+    )
     view = pdk.ViewState(latitude=lat, longitude=lon, zoom=17.2, pitch=52, bearing=-22)
     return pdk.Deck(
-        layers=[lot_layer, env_layer, bld_layer], initial_view_state=view,
+        layers=[lot_layer, env_layer, bld_layer, floor_layer], initial_view_state=view,
         map_style="road",
         tooltip={"text": "{name}\n{ht} ft \u00b7 {fl} floors"},
     )
