@@ -28,6 +28,26 @@ def geocode(addr):
         pass
     return result
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def reverse_geocode(lat, lon):
+    """Resolve a clicked map point to a street address (best-effort)."""
+    try:
+        r = requests.get(REVERSE_URL, params={
+            "lat": lat, "lon": lon, "format": "json", "addressdetails": 1, "zoom": 18
+        }, headers={"User-Agent": "PATTON/2.0"}, timeout=10)
+        d = r.json()
+        ad = d.get("address", {})
+        house = ad.get("house_number", "")
+        road = ad.get("road", "")
+        city = ad.get("city", ad.get("town", ad.get("village", "Miami")))
+        street = (house + " " + road).strip() if road else ""
+        if street:
+            return (street + ", " + city + ", FL").strip(", ")
+        return d.get("display_name", "{:.5f}, {:.5f}".format(lat, lon))
+    except Exception:
+        return "{:.5f}, {:.5f}".format(lat, lon)
+
+
 MIAMI_DADE_URL = "https://opendata.miamidade.gov/resource/k9zy-wfpd.json"
 
 @st.cache_data(ttl=3600, show_spinner=False)

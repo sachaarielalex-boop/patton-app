@@ -379,7 +379,7 @@ if st.session_state["app_mode"] == "home":
     st.stop()
 
 # ── PROPERTY SEARCH MODE ──────────────────────────────────
-from utils.geocoding import geocode, fetch_property_records, fetch_pois, SAMPLE_ADDRESSES
+from utils.geocoding import geocode, reverse_geocode, fetch_property_records, fetch_pois, SAMPLE_ADDRESSES
 from utils.maps import render_map_2d, render_map_2d_widget, render_map_3d, map_links, COMP_COLORS, _distance_mi
 from utils.property_data import NB, match_neighborhood, lookup_parcel, lookup_buildings, format_currency, format_number, ALL_SUBMARKETS, random_address
 from utils.scoring import compute_scores
@@ -527,10 +527,20 @@ if not st.session_state.searched:
         '{}'
         '<h1>Property Search</h1>'
         '<div class="wl"></div>'
-        '<div class="ws">Enter an address in the sidebar to begin</div>'
+        '<div class="ws">Enter an address in the sidebar, or click anywhere on the map below to begin</div>'
         '</div>'.format(logo_tag),
         unsafe_allow_html=True,
     )
+    st.markdown('<div style="color:var(--text-secondary);font-size:0.8rem;font-weight:600;margin:0.4rem 0 0.5rem;">Pick a location on the map</div>', unsafe_allow_html=True)
+    pick_map = render_map_2d(25.7617, -80.1918, label="Miami-Dade County", comps=[], radius_miles=0, show_legend=False)
+    pick_click = st_folium(pick_map, width=None, height=460, returned_objects=["last_clicked"], key="welcome_pick_map")
+    if pick_click and pick_click.get("last_clicked"):
+        clk = pick_click["last_clicked"]
+        with st.spinner("Resolving location..."):
+            picked_addr = reverse_geocode(clk["lat"], clk["lng"])
+        st.session_state["_rand_addr"] = picked_addr
+        st.session_state["_auto_analyze"] = True
+        st.rerun()
     st.stop()
 
 # ── Header ─────────────────────────────────────────────────
@@ -722,8 +732,17 @@ with tabs[1]:
                     })
 
         if map_sub == "2D Map":
+            st.caption("Tip: click anywhere on the map to analyze that location.")
             mp = render_map_2d(geo["lat"], geo["lon"], label=addr_display, comps=map_comps, radius_miles=radius_mi, show_legend=True)
-            st_folium(mp, width=None, height=550, returned_objects=[])
+            map_click = st_folium(mp, width=None, height=550, returned_objects=["last_clicked"], key="map_tab_2d")
+            if map_click and map_click.get("last_clicked"):
+                clk = map_click["last_clicked"]
+                if _distance_mi(geo["lat"], geo["lon"], clk["lat"], clk["lng"]) > 0.02:
+                    with st.spinner("Resolving location..."):
+                        picked_addr = reverse_geocode(clk["lat"], clk["lng"])
+                    st.session_state["_rand_addr"] = picked_addr
+                    st.session_state["_auto_analyze"] = True
+                    st.rerun()
 
         elif map_sub == "3D Massing":
             color_mode = st.radio("Color by", ["Type", "Value"], horizontal=True, key="3d_color")

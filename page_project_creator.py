@@ -112,12 +112,12 @@ def _massing_deck(p, dp):
     except ImportError:
         return None
     lat, lon = p["lat"], p["lon"]
-    # ft -> meters for extrusion, slightly exaggerated for a clear massing read.
-    HSCALE = 0.45
+    HSCALE = 0.3048  # feet -> meters: true-scale so proportions look like a real building
     lot_side = math.sqrt(max(p["lot_sf"], 100))
-    bld_side = math.sqrt(max(dp["floor_plate"], 100))
     over = dp["building_height_ft"] > p["max_ht"]
-    bld_color = [220, 38, 38, 225] if over else [37, 99, 235, 225]
+    bld_color = [220, 38, 38, 235] if over else [37, 99, 235, 235]
+    # Building covers ~88% of the lot (typical setback).
+    bld_side = lot_side * 0.88
 
     lot = [{"polygon": _rect(lat, lon, lot_side), "name": "Lot Boundary"}]
     building = [{
@@ -127,32 +127,32 @@ def _massing_deck(p, dp):
         "ht": dp["building_height_ft"], "fl": dp["est_floors"],
     }]
     envelope = [{
-        "polygon": _rect(lat, lon, lot_side * 0.96),
+        "polygon": _rect(lat, lon, lot_side),
         "elev": p["max_ht"] * HSCALE,
-        "name": "Zoning Envelope", "ht": p["max_ht"], "fl": "-",
+        "name": "Zoning Envelope", "ht": p["max_ht"], "fl": "limit",
     }]
 
     lot_layer = pdk.Layer(
         "PolygonLayer", data=lot, get_polygon="polygon", extruded=False,
-        stroked=True, filled=True, get_fill_color=[148, 163, 184, 55],
-        get_line_color=[100, 116, 139, 200], line_width_min_pixels=2, pickable=False,
+        stroked=True, filled=True, get_fill_color=[148, 163, 184, 70],
+        get_line_color=[71, 85, 105, 220], line_width_min_pixels=2, pickable=False,
     )
     env_layer = pdk.Layer(
         "PolygonLayer", data=envelope, get_polygon="polygon", extruded=True,
         get_elevation="elev", wireframe=True, filled=True,
-        get_fill_color=[220, 38, 38, 22], get_line_color=[220, 38, 38, 170],
+        get_fill_color=[220, 38, 38, 8], get_line_color=[220, 38, 38, 130],
         line_width_min_pixels=1, pickable=True,
     )
     bld_layer = pdk.Layer(
         "PolygonLayer", data=building, get_polygon="polygon", extruded=True,
         get_elevation="elev", wireframe=True, filled=True,
-        get_fill_color="color", get_line_color=[255, 255, 255, 120],
+        get_fill_color="color", get_line_color=[255, 255, 255, 90],
         line_width_min_pixels=1, pickable=True,
     )
-    view = pdk.ViewState(latitude=lat, longitude=lon, zoom=17.5, pitch=58, bearing=-25)
+    view = pdk.ViewState(latitude=lat, longitude=lon, zoom=17.2, pitch=52, bearing=-22)
     return pdk.Deck(
         layers=[lot_layer, env_layer, bld_layer], initial_view_state=view,
-        map_style="light",
+        map_style="road",
         tooltip={"text": "{name}\n{ht} ft \u00b7 {fl} floors"},
     )
 
@@ -216,6 +216,90 @@ def _live_panel(p, dp):
         pcol=profit_col, margin=dp["profit_margin"],
     )
     st.markdown(cards, unsafe_allow_html=True)
+
+
+def _step_html(num, title, formula, note):
+    return (
+        '<div style="display:flex;gap:0.8rem;padding:0.9rem 0;border-bottom:1px solid var(--border);">'
+        '<div style="flex:0 0 26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;'
+        'display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.8rem;">{num}</div>'
+        '<div style="flex:1;">'
+        '<div style="font-size:0.86rem;font-weight:800;color:var(--text-primary);margin-bottom:0.2rem;">{title}</div>'
+        '<div style="font-size:0.82rem;color:var(--text-secondary);font-family:ui-monospace,Menlo,monospace;'
+        'background:var(--bg-subtle,rgba(37,99,235,0.05));border-radius:8px;padding:0.4rem 0.6rem;margin:0.25rem 0;">{formula}</div>'
+        '<div style="font-size:0.74rem;color:var(--text-muted);line-height:1.5;">{note}</div>'
+        '</div></div>'
+    ).format(num=num, title=title, formula=formula, note=note)
+
+
+def _breakdown_html(p, dp):
+    """Plain-English, client-facing explanation of how every number is derived."""
+    fc = format_currency
+    mo_rent = p.get("target_rent_res", 0)
+    res_income = dp["est_units"] * mo_rent * 12
+    cap = p.get("exit_cap", 5.0)
+    far = p.get("far", 0)
+
+    steps = ""
+    # 1. Buildable area
+    steps += _step_html(
+        "1", "How much we can build",
+        "{lot:,} sf lot &times; {far} FAR = {maxg:,} sf allowed &rarr; we build {gsf:,} sf over {fl} floors".format(
+            lot=dp["lot_sf"], far=far, maxg=int(dp["max_gsf"]), gsf=dp["actual_gsf"], fl=dp["est_floors"]),
+        "FAR (Floor Area Ratio) is the zoning multiplier that caps total floor area. Lot size &times; FAR = the maximum square footage the city lets us build on this parcel.",
+    )
+    # 2. Rentable + units
+    steps += _step_html(
+        "2", "Usable space &amp; apartments",
+        "{gsf:,} sf &times; {eff}% efficiency = {rent:,} sf rentable &rarr; {units} apartments (&asymp;{avg:,} sf each)".format(
+            gsf=dp["actual_gsf"], eff=p.get("rent_eff", 85), rent=dp["rentable_sf"],
+            units=dp["est_units"], avg=dp["avg_unit_sf"]),
+        "Not all built area can be rented &mdash; hallways, elevators, lobbies and walls take a share. The rentable portion is split into apartments based on the average unit size.",
+    )
+    # 3. Cost
+    steps += _step_html(
+        "3", "What it costs to build",
+        "Hard {hc} + Soft {sc} + Parking {pc} + Land {ld} = {tot} all-in".format(
+            hc=fc(dp["hard_cost"]), sc=fc(dp["soft_cost"]), pc=fc(dp["parking_cost"]),
+            ld=fc(dp["land_price"]), tot=fc(dp["total_dev_cost"])),
+        "Hard cost = construction (${psf}/sf). Soft cost = design, permits, fees &amp; financing. Plus parking and the land price. Together they are the total development cost.".format(
+            psf=p.get("construction_psf", 0)),
+    )
+    # 4. Income -> NOI
+    steps += _step_html(
+        "4", "Yearly income &rarr; NOI",
+        "Rent {gi}/yr &minus; 5% vacancy = {egi} &minus; {opp}% running costs = {noi} NOI".format(
+            gi=fc(dp["gross_income"]), egi=fc(dp["egi"]), opp=35, noi=fc(dp["noi"])),
+        "NOI (Net Operating Income) is the building&rsquo;s yearly profit from rent after vacancy and running costs (taxes, insurance, management, repairs) &mdash; but before any loan payment. It is THE number buyers use to value a building. Here {units} apartments at ${mo:,}/mo drive most of it.".format(
+            units=dp["est_units"], mo=mo_rent),
+    )
+    # 5. Value & profit
+    steps += _step_html(
+        "5", "What the finished building is worth",
+        "{noi} NOI &divide; {cap}% cap rate = {val} value &minus; {cost} cost = {profit} profit".format(
+            noi=fc(dp["noi"]), cap=cap, val=fc(dp["value_at_cap"]),
+            cost=fc(dp["total_dev_cost"]), profit=fc(dp["profit"])),
+        "A cap rate is the yield buyers expect in this market. Dividing NOI by the cap rate gives the sale value (a {cap}% cap means buyers pay ~{mult:.0f}&times; the yearly NOI). Value minus what we spent = our profit. Return on cost = NOI &divide; cost = {roc:.1f}%.".format(
+            cap=cap, mult=(100.0 / cap if cap else 0), roc=dp["return_on_cost"]),
+    )
+    # 6. Financing
+    steps += _step_html(
+        "6", "Financing &amp; safety check",
+        "Loan {loan} ({ltv}% LTV) + Equity {eq} &middot; Debt service {ds}/yr &middot; DSCR {dscr:.2f}&times;".format(
+            loan=fc(dp["loan_amount"]), ltv=p.get("ltv", 65), eq=fc(dp["equity"]),
+            ds=fc(dp["annual_ds"]), dscr=dp["dscr"]),
+        "The bank lends a share (LTV = loan-to-value); we fund the rest as equity. DSCR (Debt Service Coverage Ratio) checks safety: NOI &divide; loan payment. Above 1.25&times; is healthy &mdash; the rent comfortably covers the mortgage.",
+    )
+
+    return (
+        '<div class="card" style="padding:1.1rem 1.3rem;margin-top:0.6rem;">'
+        '<div style="font-size:0.95rem;font-weight:800;color:var(--text-primary);margin-bottom:0.2rem;">'
+        'How we got to these numbers</div>'
+        '<div style="font-size:0.76rem;color:var(--text-muted);margin-bottom:0.4rem;">'
+        'A step-by-step walkthrough you can read with a client &mdash; no jargon left unexplained.</div>'
+        '{steps}'
+        '</div>'.format(steps=steps)
+    )
 
 
 def _set(key):
@@ -354,6 +438,9 @@ def render_project_creator():
                 roc=dp["return_on_cost"],
             )
             st.markdown(rows, unsafe_allow_html=True)
+
+            # Plain-English walkthrough of how every number was derived.
+            st.markdown(_breakdown_html(p, dp), unsafe_allow_html=True)
 
             p["name"] = st.text_input("Confirm project name", value=p["name"] or (p["address"] or "Untitled Project"),
                                       key="pc_finalname")
