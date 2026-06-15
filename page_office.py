@@ -13,6 +13,15 @@ STEP_NAMES = ["Budget", "Size", "Building", "Suite"]
 AVAIL_STATUSES = ("vacant", "expired")
 
 
+def _haversine_km(lat1, lon1, lat2, lon2):
+    r = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(min(1.0, math.sqrt(a)))
+
+
 def _progress_bar(current, choices):
     html = '<div style="margin:0.8rem 0 1.2rem;overflow-x:auto;">'
     html += '<div style="display:flex;align-items:center;gap:0;">'
@@ -475,19 +484,77 @@ def render_office_page():
         if not any_match:
             st.markdown('<div class="alert-warn">No buildings have matching suites. Try adjusting budget or size.</div>', unsafe_allow_html=True)
 
-        # Map of all buildings
-        st.markdown('<div class="card"><div class="card-title">Building Locations</div>', unsafe_allow_html=True)
+        # ── Interactive map: click a location to pick the exact office lot ──
+        st.markdown(
+            '<div class="card"><div class="card-title">Pick a Lot on the Map</div>'
+            '<div style="font-size:0.76rem;color:var(--slate-500);margin-bottom:0.5rem;">'
+            'Click a building pin on the map. If several office lots sit close together, '
+            'every nearby lot is listed below so you can choose the exact one.</div>',
+            unsafe_allow_html=True,
+        )
         mp = folium.Map(location=[25.78, -80.30], zoom_start=11, tiles="CartoDB positron")
         for b in buildings:
             vac = sum(1 for s in b["suites"] if s["status"] in AVAIL_STATUSES
                       and s.get("asking_rate") and s["asking_rate"] <= bgt_max
                       and min_sf <= (s.get("boma_rsf") or s.get("rsf", 0)) <= max_sf)
-            color = "green" if vac > 0 else "gray"
+            color = "#16a34a" if vac > 0 else "#94a3b8"
             popup_html = "<b>{}</b><br>{}<br>{} matching suites".format(b["name"], b["address"], vac)
-            folium.Marker([b["lat"], b["lon"]], popup=folium.Popup(popup_html, max_width=250),
-                icon=folium.Icon(color=color, icon="building", prefix="fa")).add_to(mp)
-        st_folium(mp, width=None, height=350, returned_objects=[])
+            folium.CircleMarker(
+                [b["lat"], b["lon"]], radius=11, color="#ffffff", weight=2,
+                fill=True, fill_color=color, fill_opacity=0.95,
+                tooltip=b["name"],
+                popup=folium.Popup(popup_html, max_width=250),
+            ).add_to(mp)
+        map_out = st_folium(mp, width=None, height=360,
+                            returned_objects=["last_object_clicked", "last_clicked"])
         st.markdown('</div>', unsafe_allow_html=True)
+
+        # Resolve the clicked point to nearby office lots and propose each one.
+        click = None
+        if map_out:
+            click = map_out.get("last_object_clicked") or map_out.get("last_clicked")
+        if click and click.get("lat") is not None:
+            clat, clon = click["lat"], click["lng"]
+            ranked = sorted(buildings, key=lambda b: _haversine_km(clat, clon, b["lat"], b["lon"]))
+            nearby = [b for b in ranked if _haversine_km(clat, clon, b["lat"], b["lon"]) <= 0.4]
+            if not nearby and ranked:
+                nearby = ranked[:1]
+
+            st.markdown(
+                '<div style="font-size:0.95rem;font-weight:800;color:var(--navy);margin:0.8rem 0 0.4rem;">'
+                '{} lot{} near your click</div>'.format(len(nearby), "s" if len(nearby) != 1 else ""),
+                unsafe_allow_html=True,
+            )
+            for b in nearby:
+                vac_suites = [s for s in b["suites"] if s["status"] in AVAIL_STATUSES
+                              and s.get("asking_rate") and s["asking_rate"] <= bgt_max
+                              and min_sf <= (s.get("boma_rsf") or s.get("rsf", 0)) <= max_sf]
+                dist_m = int(_haversine_km(clat, clon, b["lat"], b["lon"]) * 1000)
+                rates = [s["asking_rate"] for s in vac_suites]
+                rate_txt = "${:.0f}-${:.0f}/sf".format(min(rates), max(rates)) if rates else "no match in budget"
+                with st.container(border=True):
+                    st.markdown(
+                        '<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
+                        '<div><div style="font-size:1rem;font-weight:800;color:var(--navy);">{name}</div>'
+                        '<div style="font-size:0.74rem;color:var(--slate-500);">{addr}</div>'
+                        '<div style="font-size:0.68rem;color:var(--slate-400);margin-top:0.2rem;">'
+                        '~{dist} m from click &middot; Class {cls} &middot; {fl} floors</div></div>'
+                        '<div style="text-align:right;"><div style="font-size:1.3rem;font-weight:800;color:{vc};">{vac}</div>'
+                        '<div style="font-size:0.58rem;color:var(--slate-400);">matching suites</div>'
+                        '<div style="font-size:0.68rem;color:var(--slate-500);margin-top:0.2rem;">{rate}</div></div>'
+                        '</div>'.format(
+                            name=b["name"], addr=b["address"], dist=dist_m,
+                            cls=b["building_class"], fl=b["floors"],
+                            vac=len(vac_suites), vc="#16a34a" if vac_suites else "#94a3b8",
+                            rate=rate_txt),
+                        unsafe_allow_html=True,
+                    )
+                    if st.button("Select this lot \u2192", use_container_width=True,
+                                 key="lot_pick_{}".format(b["id"]), type="primary",
+                                 disabled=len(vac_suites) == 0):
+                        st.session_state.os_building = b["id"]
+                        st.session_state.os_step = 3
+                        st.rerun()
 
     # ══════════════════════════════════════════════════════════
     # STEP 3: Suite Selection

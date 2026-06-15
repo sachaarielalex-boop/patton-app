@@ -225,95 +225,70 @@ if st.session_state["app_mode"] == "home":
 
     st.markdown(
         '<style>'
-        '.mod-card { text-align:center; padding:1.8rem 1.5rem; min-height:210px; border:1px solid var(--border); '
-        'border-radius:var(--radius); transition:all 0.28s ease; cursor:pointer; background:var(--bg-card); '
-        'position:relative; overflow:hidden; box-shadow:var(--shadow-sm); }'
-        '.mod-card::before { content:""; position:absolute; top:0; left:0; right:0; height:3px; '
-        'background:linear-gradient(90deg, var(--accent), var(--gold)); transform:scaleX(0); transform-origin:left; transition:transform 0.3s ease; }'
-        '.mod-card:hover { transform:translateY(-4px); box-shadow:var(--shadow-lg); border-color:var(--border-hover); }'
-        '.mod-card:hover::before { transform:scaleX(1); }'
-        '.mod-icon { width:54px; height:54px; border-radius:15px; display:flex; align-items:center; '
-        'justify-content:center; margin:0 auto 0.9rem; font-size:1.6rem; transition:transform 0.28s ease; }'
-        '.mod-card:hover .mod-icon { transform:scale(1.08); }'
+        # Native bordered containers become warm, glowing cards; the button inside
+        # is part of the same box so the CTA reads as one unit with the card.
+        '[data-testid="stVerticalBlockBorderWrapper"] { border-radius:18px !important; '
+        'transition:all 0.28s cubic-bezier(.2,.7,.3,1); position:relative; overflow:hidden; '
+        'background:linear-gradient(160deg, var(--bg-card) 0%, var(--accent-soft) 240%); '
+        'box-shadow:var(--shadow-sm); }'
+        '[data-testid="stVerticalBlockBorderWrapper"]::before { content:""; position:absolute; '
+        'top:0; left:0; right:0; height:4px; background:linear-gradient(90deg, var(--accent), var(--gold)); '
+        'transform:scaleX(0); transform-origin:left; transition:transform 0.35s ease; z-index:3; }'
+        '[data-testid="stVerticalBlockBorderWrapper"]:hover { transform:translateY(-5px); '
+        'box-shadow:0 18px 40px -12px rgba(37,99,235,0.28); border-color:var(--accent-border) !important; }'
+        '[data-testid="stVerticalBlockBorderWrapper"]:hover::before { transform:scaleX(1); }'
+        '.mod-inner { text-align:center; padding:0.3rem 0.4rem 0.2rem; }'
+        '.mod-icon { width:58px; height:58px; border-radius:16px; display:flex; align-items:center; '
+        'justify-content:center; margin:0 auto 0.85rem; font-size:1.7rem; transition:transform 0.28s ease; '
+        'box-shadow:0 6px 16px -6px rgba(0,0,0,0.18); }'
+        '[data-testid="stVerticalBlockBorderWrapper"]:hover .mod-icon { transform:scale(1.1) rotate(-3deg); }'
+        '.qa-inner { text-align:center; padding:0.15rem 0 0.1rem; }'
+        '.qa-inner .qi { font-size:1.55rem; margin-bottom:0.3rem; filter:drop-shadow(0 3px 6px rgba(0,0,0,0.12)); }'
+        '.qa-inner .ql { font-size:0.62rem; font-weight:700; color:var(--text-secondary); '
+        'letter-spacing:0.4px; text-transform:uppercase; line-height:1.3; }'
         '</style>',
         unsafe_allow_html=True,
     )
 
-    CARD_STYLE = ""
-    ICON_STYLE = (
-        'width:54px;height:54px;border-radius:15px;display:flex;align-items:center;'
-        'justify-content:center;margin:0 auto 0.9rem;font-size:1.6rem;'
-    )
+    MODULES = [
+        ("btn_property", "property", "&#x1F50D;", "Property Search",
+         "var(--accent-soft)", "var(--accent-border)",
+         "Analyze any Miami-Dade address: zoning, market comps, valuation, risk, AI recommendations.",
+         '<span class="badge badge-blue">12 Tabs</span><span class="badge badge-green">AI Scoring</span>'),
+        ("btn_office", "office", "&#x1F3E2;", "Office Suite Finder",
+         "var(--green-soft)", "var(--green-border)",
+         "Set budget, pick size, choose building with amenities, find the perfect suite with floor plans.",
+         '<span class="badge badge-blue">3 Buildings</span><span class="badge badge-green">16 Suites</span>'),
+        ("btn_abstract", "abstract", "&#x1F4C4;", "Lease Abstract",
+         "var(--amber-soft)", "var(--amber-border)",
+         "Upload a scanned lease PDF and generate a structured abstract with all key terms extracted.",
+         '<span class="badge badge-amber">PDF Upload</span><span class="badge badge-blue">Auto-Extract</span>'),
+        ("btn_proposal", "proposal", "&#x1F4DD;", "Lease Proposal",
+         "var(--red-soft)", "var(--red-border)",
+         "Generate a professional LOI: select building, fill in lease details, download ready-to-send proposal.",
+         '<span class="badge badge-green">3 Buildings</span><span class="badge badge-amber">Download .docx</span>'),
+    ]
 
-    # Row 1
-    lc, rc = st.columns(2, gap="large")
-    with lc:
-        st.markdown(
-            '<div class="mod-card">'
-            '<div class="mod-icon" style="background:var(--accent-soft);border:1px solid var(--accent-border);">&#x1F50D;</div>'
-            '<div style="font-size:1.05rem;font-weight:800;color:var(--text-primary);margin-bottom:0.5rem;">Property Search</div>'
-            '<p style="font-size:0.76rem;color:var(--text-tertiary);line-height:1.65;margin:0 0 0.8rem;">Analyze any Miami-Dade address: zoning, market comps, valuation, risk, AI recommendations.</p>'
-            '<div style="display:flex;gap:0.3rem;flex-wrap:wrap;justify-content:center;">'
-            '<span class="badge badge-blue">12 Tabs</span>'
-            '<span class="badge badge-green">AI Scoring</span>'
-            '</div></div>',
-            unsafe_allow_html=True,
-        )
-        if st.button("PROPERTY SEARCH", use_container_width=True, key="btn_property", type="primary"):
-            st.session_state["app_mode"] = "property"
-            st.rerun()
-
-    with rc:
-        st.markdown(
-            '<div class="mod-card">'
-            '<div class="mod-icon" style="background:var(--green-soft);border:1px solid var(--green-border);">&#x1F3E2;</div>'
-            '<div style="font-size:1.05rem;font-weight:800;color:var(--text-primary);margin-bottom:0.5rem;">Office Suite Finder</div>'
-            '<p style="font-size:0.76rem;color:var(--text-tertiary);line-height:1.65;margin:0 0 0.8rem;">Set budget, pick size, choose building with amenities, find the perfect suite with floor plans.</p>'
-            '<div style="display:flex;gap:0.3rem;flex-wrap:wrap;justify-content:center;">'
-            '<span class="badge badge-blue">3 Buildings</span>'
-            '<span class="badge badge-green">16 Suites</span>'
-            '</div></div>',
-            unsafe_allow_html=True,
-        )
-        if st.button("OFFICE SUITE FINDER", use_container_width=True, key="btn_office", type="primary"):
-            st.session_state["app_mode"] = "office"
-            st.rerun()
-
-    st.markdown('<div style="height:0.8rem;"></div>', unsafe_allow_html=True)
-
-    # Row 2
-    lc2, rc2 = st.columns(2, gap="large")
-    with lc2:
-        st.markdown(
-            '<div class="mod-card">'
-            '<div class="mod-icon" style="background:var(--amber-soft);border:1px solid var(--amber-border);">&#x1F4C4;</div>'
-            '<div style="font-size:1.05rem;font-weight:800;color:var(--text-primary);margin-bottom:0.5rem;">Lease Abstract</div>'
-            '<p style="font-size:0.76rem;color:var(--text-tertiary);line-height:1.65;margin:0 0 0.8rem;">Upload a scanned lease PDF and generate a structured abstract with all key terms extracted.</p>'
-            '<div style="display:flex;gap:0.3rem;flex-wrap:wrap;justify-content:center;">'
-            '<span class="badge badge-amber">PDF Upload</span>'
-            '<span class="badge badge-blue">Auto-Extract</span>'
-            '</div></div>',
-            unsafe_allow_html=True,
-        )
-        if st.button("LEASE ABSTRACT", use_container_width=True, key="btn_abstract", type="primary"):
-            st.session_state["app_mode"] = "abstract"
-            st.rerun()
-
-    with rc2:
-        st.markdown(
-            '<div class="mod-card">'
-            '<div class="mod-icon" style="background:var(--red-soft);border:1px solid var(--red-border);">&#x1F4DD;</div>'
-            '<div style="font-size:1.05rem;font-weight:800;color:var(--text-primary);margin-bottom:0.5rem;">Lease Proposal</div>'
-            '<p style="font-size:0.76rem;color:var(--text-tertiary);line-height:1.65;margin:0 0 0.8rem;">Generate a professional LOI: select building, fill in lease details, download ready-to-send proposal.</p>'
-            '<div style="display:flex;gap:0.3rem;flex-wrap:wrap;justify-content:center;">'
-            '<span class="badge badge-green">3 Buildings</span>'
-            '<span class="badge badge-amber">Download .docx</span>'
-            '</div></div>',
-            unsafe_allow_html=True,
-        )
-        if st.button("LEASE PROPOSAL", use_container_width=True, key="btn_proposal", type="primary"):
-            st.session_state["app_mode"] = "proposal"
-            st.rerun()
+    for row_start in (0, 2):
+        cols = st.columns(2, gap="large")
+        for ci, mod in enumerate(MODULES[row_start:row_start + 2]):
+            key, mode, icon, title, ibg, ibd, desc, badges = mod
+            with cols[ci]:
+                with st.container(border=True):
+                    st.markdown(
+                        '<div class="mod-inner">'
+                        '<div class="mod-icon" style="background:{ibg};border:1px solid {ibd};">{icon}</div>'
+                        '<div style="font-size:1.05rem;font-weight:800;color:var(--text-primary);margin-bottom:0.5rem;">{title}</div>'
+                        '<p style="font-size:0.76rem;color:var(--text-tertiary);line-height:1.65;margin:0 0 0.8rem;">{desc}</p>'
+                        '<div style="display:flex;gap:0.3rem;flex-wrap:wrap;justify-content:center;">{badges}</div>'
+                        '</div>'.format(ibg=ibg, ibd=ibd, icon=icon, title=title, desc=desc, badges=badges),
+                        unsafe_allow_html=True,
+                    )
+                    if st.button("Open " + title, use_container_width=True, key=key, type="primary"):
+                        st.session_state["app_mode"] = mode
+                        st.rerun()
+        if row_start == 0:
+            st.markdown('<div style="height:0.4rem;"></div>', unsafe_allow_html=True)
 
     # ── Quick Access Tabs ──────────────────────────────────
     st.markdown('<div style="height:1.5rem;"></div>', unsafe_allow_html=True)
@@ -333,30 +308,20 @@ if st.session_state["app_mode"] == "home":
         ("rent", "&#x1F4B0;", "Rent Tracker"),
     ]
 
-    st.markdown(
-        '<style>'
-        '.qa-tile { text-align:center; padding:1rem 0.4rem 0.6rem; border:1px solid var(--border); '
-        'border-radius:var(--radius-sm); background:var(--bg-card); transition:all 0.22s ease; box-shadow:var(--shadow-sm); }'
-        '.qa-tile:hover { border-color:var(--accent-border); background:var(--accent-soft); transform:translateY(-2px); box-shadow:var(--shadow-md); }'
-        '.qa-tile .qi { font-size:1.4rem; margin-bottom:0.35rem; }'
-        '.qa-tile .ql { font-size:0.6rem; font-weight:700; color:var(--text-tertiary); letter-spacing:0.4px; text-transform:uppercase; line-height:1.3; }'
-        '</style>',
-        unsafe_allow_html=True,
-    )
-
     qa_cols = st.columns(len(QA_ITEMS), gap="small")
     for idx, (mode, icon, label) in enumerate(QA_ITEMS):
         with qa_cols[idx]:
-            st.markdown(
-                '<div class="qa-tile">'
-                '<div class="qi">{icon}</div>'
-                '<div class="ql">{label}</div>'
-                '</div>'.format(icon=icon, label=label),
-                unsafe_allow_html=True,
-            )
-            if st.button("Open", use_container_width=True, key="btn_qa_{}".format(mode)):
-                st.session_state["app_mode"] = mode
-                st.rerun()
+            with st.container(border=True):
+                st.markdown(
+                    '<div class="qa-inner">'
+                    '<div class="qi">{icon}</div>'
+                    '<div class="ql">{label}</div>'
+                    '</div>'.format(icon=icon, label=label),
+                    unsafe_allow_html=True,
+                )
+                if st.button("Open", use_container_width=True, key="btn_qa_{}".format(mode)):
+                    st.session_state["app_mode"] = mode
+                    st.rerun()
 
     st.markdown(
         '<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;">'
