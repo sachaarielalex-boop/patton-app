@@ -33,51 +33,84 @@ if "splash_done" not in st.session_state:
     st.session_state["splash_done"] = False
 
 if not st.session_state["splash_done"]:
-    # Use native Streamlit components — no custom CSS for cloud compatibility
+    # Premium dark splash screen — pure CSS, cloud-safe (no data-testid selectors)
     st.markdown(
         '<style>'
-        '.stTextInput input { color: #000000 !important; }'
+        '@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap");'
+        '.stApp { background: radial-gradient(ellipse at top, #1a2744 0%, #0a0f1d 55%, #05070d 100%) !important; }'
+        '.stApp * { font-family: "Inter", -apple-system, sans-serif; }'
+        'header, #MainMenu, footer { visibility: hidden !important; height: 0 !important; }'
+        '.block-container { padding-top: 0 !important; max-width: 460px !important; }'
+        '@keyframes pat-glow { 0%,100% { box-shadow: 0 0 40px rgba(96,165,250,0.25), 0 0 80px rgba(212,168,83,0.08); } 50% { box-shadow: 0 0 60px rgba(96,165,250,0.40), 0 0 120px rgba(212,168,83,0.18); } }'
+        '@keyframes pat-line { 0% { width: 0; opacity: 0; } 100% { width: 70px; opacity: 1; } }'
+        '@keyframes pat-fade { 0% { opacity: 0; transform: translateY(14px); } 100% { opacity: 1; transform: translateY(0); } }'
+        '@keyframes pat-shimmer { 0% { transform: translateX(-120%); } 100% { transform: translateX(220%); } }'
+        '.pat-logo { animation: pat-glow 3.5s ease-in-out infinite; border-radius: 50%; }'
+        '.pat-title { animation: pat-fade 0.8s ease both; }'
+        '.pat-line { height: 3px; background: linear-gradient(90deg, #3b82f6, #d4a853); border-radius: 2px; margin: 1.1rem auto; animation: pat-line 1s ease 0.3s both; }'
+        '.pat-sub { animation: pat-fade 0.8s ease 0.5s both; }'
+        '.pat-foot { animation: pat-fade 1s ease 0.9s both; }'
+        # Password input — glassmorphism
+        '.stTextInput input { background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.14) !important; '
+        'color: #ffffff !important; border-radius: 12px !important; padding: 0.85rem 1.1rem !important; font-size: 0.95rem !important; '
+        'backdrop-filter: blur(10px); transition: all 0.25s ease; }'
+        '.stTextInput input:focus { border-color: rgba(96,165,250,0.7) !important; box-shadow: 0 0 0 4px rgba(59,130,246,0.18) !important; background: rgba(255,255,255,0.09) !important; }'
+        '.stTextInput input::placeholder { color: rgba(255,255,255,0.4) !important; }'
+        # Enter button — gradient + shimmer
+        '.stButton > button { position: relative; overflow: hidden; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 60%, #b8862f 140%) !important; '
+        'border: none !important; border-radius: 12px !important; color: #fff !important; font-weight: 700 !important; letter-spacing: 2px !important; '
+        'text-transform: uppercase !important; font-size: 0.8rem !important; padding: 0.85rem !important; transition: all 0.25s ease !important; '
+        'box-shadow: 0 8px 24px rgba(37,99,235,0.35) !important; }'
+        '.stButton > button:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(37,99,235,0.5) !important; }'
+        '.stButton > button::after { content: ""; position: absolute; top: 0; left: 0; width: 40%; height: 100%; '
+        'background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent); animation: pat-shimmer 3s ease-in-out infinite; }'
         '</style>',
         unsafe_allow_html=True,
     )
 
-    _s1, _s2, _s3 = st.columns([1, 2, 1])
-    with _s2:
-        if LOGO_B64:
-            st.markdown(
-                '<div style="text-align:center;padding-top:12vh;">'
-                '<img src="data:image/png;base64,{}" style="height:120px;">'
-                '</div>'.format(LOGO_B64),
-                unsafe_allow_html=True,
-            )
-        st.markdown(
-            '<div style="text-align:center;margin-top:1rem;">'
-            '<div style="font-size:2.5rem;font-weight:900;color:#0f172a;letter-spacing:-1px;">PATTON</div>'
-            '<div style="width:60px;height:3px;background:linear-gradient(90deg,#2563eb,#d4a853);border-radius:2px;margin:1rem auto;"></div>'
-            '<div style="font-size:0.75rem;color:#64748b;letter-spacing:4px;text-transform:uppercase;font-weight:600;">Real Estate Intelligence</div>'
-            '</div>',
-            unsafe_allow_html=True,
+    logo_block = ""
+    if LOGO_B64:
+        logo_block = (
+            '<div style="text-align:center;">'
+            '<img class="pat-logo" src="data:image/png;base64,{}" style="height:110px;">'
+            '</div>'.format(LOGO_B64)
         )
-        st.markdown("")
-        pwd = st.text_input("Password", type="password", placeholder="Enter password", key="splash_pwd", label_visibility="collapsed")
-        if st.button("ENTER", key="splash_enter", type="primary", use_container_width=True):
-            if pwd == "patton.com":
-                st.session_state["splash_done"] = True
-                st.rerun()
-            else:
-                st.error("Incorrect password")
-        st.markdown(
-            '<div style="text-align:center;margin-top:3rem;">'
-            '<div style="font-size:0.6rem;color:#94a3b8;letter-spacing:1px;">'
-            'Patton Commercial Real Estate &mdash; Miami-Dade County</div></div>',
-            unsafe_allow_html=True,
-        )
+
+    st.markdown(
+        '<div style="padding-top:13vh;">'
+        '{logo}'
+        '<div class="pat-title" style="text-align:center;margin-top:1.5rem;">'
+        '<div style="font-size:2.9rem;font-weight:900;color:#ffffff;letter-spacing:-1.5px;">PATTON</div>'
+        '</div>'
+        '<div class="pat-line" style="width:70px;"></div>'
+        '<div class="pat-sub" style="text-align:center;">'
+        '<div style="font-size:0.72rem;color:#94a3b8;letter-spacing:5px;text-transform:uppercase;font-weight:600;">Real Estate Intelligence</div>'
+        '</div>'
+        '<div style="height:2.2rem;"></div>'
+        '</div>'.format(logo=logo_block),
+        unsafe_allow_html=True,
+    )
+
+    pwd = st.text_input("Password", type="password", placeholder="Enter access code", key="splash_pwd", label_visibility="collapsed")
+    if st.button("Enter", key="splash_enter", use_container_width=True):
+        if pwd == "patton.com":
+            st.session_state["splash_done"] = True
+            st.rerun()
+        else:
+            st.error("Incorrect access code")
+
+    st.markdown(
+        '<div class="pat-foot" style="text-align:center;margin-top:3.5rem;">'
+        '<div style="font-size:0.58rem;color:rgba(255,255,255,0.3);letter-spacing:1.5px;">'
+        'PATTON COMMERCIAL REAL ESTATE &mdash; MIAMI-DADE COUNTY</div></div>',
+        unsafe_allow_html=True,
+    )
     st.stop()
 
 inject_css()
 
-# Top bar: theme toggle + news
-_tb_spacer, _tb_news, _tb_theme = st.columns([6, 1, 1])
+# Top bar: news + theme toggle
+_tb_spacer, _tb_news, _tb_theme = st.columns([7, 1, 1])
 with _tb_news:
     if st.button("News", key="top_news", use_container_width=True):
         st.session_state["app_mode"] = "news"
@@ -153,45 +186,69 @@ if st.session_state["app_mode"] == "home":
         unsafe_allow_html=True,
     )
 
+    st.markdown(
+        '<style>'
+        '@keyframes homeFade { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }'
+        '.home-hero { animation: homeFade 0.7s ease both; }'
+        '.home-hero img { animation: floatY 5s ease-in-out infinite; }'
+        '@keyframes floatY { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }'
+        '.home-line { animation: lineGrow 0.9s ease 0.3s both; }'
+        '@keyframes lineGrow { from { width: 0; opacity: 0; } to { width: 56px; opacity: 1; } }'
+        '</style>',
+        unsafe_allow_html=True,
+    )
+
     logo_tag = ""
     if LOGO_B64:
-        logo_tag = '<img src="data:image/png;base64,{}" style="height:140px;filter:drop-shadow(0 8px 32px rgba(0,0,0,0.15));">'.format(LOGO_B64)
+        logo_tag = '<img src="data:image/png;base64,{}" style="height:110px;filter:drop-shadow(0 10px 32px rgba(37,99,235,0.18));">'.format(LOGO_B64)
 
     st.markdown(
-        '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:30vh;text-align:center;padding-top:4vh;">'
+        '<div class="home-hero" style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding-top:2vh;">'
         '{logo}'
-        '<h1 style="font-size:2.6rem;font-weight:900;color:var(--text-primary);letter-spacing:-1.5px;margin:1rem 0 0.3rem;">PATTON</h1>'
-        '<div style="width:50px;height:3px;background:linear-gradient(90deg, var(--accent), var(--gold));border-radius:2px;margin:0 auto;"></div>'
-        '<div style="font-size:0.72rem;color:var(--text-muted);letter-spacing:3px;text-transform:uppercase;margin-top:0.8rem;font-weight:600;">Real Estate Intelligence</div>'
-        '<div style="font-size:0.82rem;color:var(--text-tertiary);margin-top:0.4rem;">Patton Commercial Real Estate &mdash; Miami-Dade County</div>'
+        '<h1 style="font-size:2.2rem;font-weight:900;color:var(--text-primary);letter-spacing:-1.2px;margin:0.8rem 0 0.2rem;">PATTON</h1>'
+        '<div class="home-line" style="width:56px;height:3px;background:linear-gradient(90deg, var(--accent), var(--gold));border-radius:2px;margin:0.4rem auto;"></div>'
+        '<div style="font-size:0.68rem;color:var(--text-muted);letter-spacing:3px;text-transform:uppercase;margin-top:0.7rem;font-weight:600;">Real Estate Intelligence</div>'
+        '<div style="font-size:0.78rem;color:var(--text-tertiary);margin-top:0.3rem;">Patton Commercial Real Estate &mdash; Miami-Dade County</div>'
         '</div>'.format(logo=logo_tag),
         unsafe_allow_html=True,
     )
 
-    st.markdown('<div style="height:1.5rem;"></div>', unsafe_allow_html=True)
+    st.markdown('<div style="height:1.2rem;"></div>', unsafe_allow_html=True)
 
-    CARD_STYLE = (
-        'text-align:center;padding:2rem 1.5rem;min-height:220px;'
-        'border:1px solid var(--border);transition:all 0.25s;cursor:pointer;'
-        'background:var(--bg-card);'
+    st.markdown(
+        '<style>'
+        '.mod-card { text-align:center; padding:1.8rem 1.5rem; min-height:210px; border:1px solid var(--border); '
+        'border-radius:var(--radius); transition:all 0.28s ease; cursor:pointer; background:var(--bg-card); '
+        'position:relative; overflow:hidden; box-shadow:var(--shadow-sm); }'
+        '.mod-card::before { content:""; position:absolute; top:0; left:0; right:0; height:3px; '
+        'background:linear-gradient(90deg, var(--accent), var(--gold)); transform:scaleX(0); transform-origin:left; transition:transform 0.3s ease; }'
+        '.mod-card:hover { transform:translateY(-4px); box-shadow:var(--shadow-lg); border-color:var(--border-hover); }'
+        '.mod-card:hover::before { transform:scaleX(1); }'
+        '.mod-icon { width:54px; height:54px; border-radius:15px; display:flex; align-items:center; '
+        'justify-content:center; margin:0 auto 0.9rem; font-size:1.6rem; transition:transform 0.28s ease; }'
+        '.mod-card:hover .mod-icon { transform:scale(1.08); }'
+        '</style>',
+        unsafe_allow_html=True,
     )
+
+    CARD_STYLE = ""
     ICON_STYLE = (
-        'width:52px;height:52px;border-radius:14px;display:flex;align-items:center;'
-        'justify-content:center;margin:0 auto 0.8rem;font-size:1.5rem;'
+        'width:54px;height:54px;border-radius:15px;display:flex;align-items:center;'
+        'justify-content:center;margin:0 auto 0.9rem;font-size:1.6rem;'
     )
 
     # Row 1
     lc, rc = st.columns(2, gap="large")
     with lc:
         st.markdown(
-            '<div class="card" style="{cs}">'
-            '<div style="{ic}background:var(--accent-soft);border:1px solid var(--accent-border);">&#x1F50D;</div>'
+            '<div class="mod-card">'
+            '<div class="mod-icon" style="background:var(--accent-soft);border:1px solid var(--accent-border);">&#x1F50D;</div>'
             '<div style="font-size:1.05rem;font-weight:800;color:var(--text-primary);margin-bottom:0.5rem;">Property Search</div>'
             '<p style="font-size:0.76rem;color:var(--text-tertiary);line-height:1.65;margin:0 0 0.8rem;">Analyze any Miami-Dade address: zoning, market comps, valuation, risk, AI recommendations.</p>'
             '<div style="display:flex;gap:0.3rem;flex-wrap:wrap;justify-content:center;">'
             '<span class="badge badge-blue">12 Tabs</span>'
             '<span class="badge badge-green">AI Scoring</span>'
-            '</div></div>'.format(cs=CARD_STYLE, ic=ICON_STYLE),
+            '</div></div>',
             unsafe_allow_html=True,
         )
         if st.button("PROPERTY SEARCH", use_container_width=True, key="btn_property", type="primary"):
@@ -200,14 +257,14 @@ if st.session_state["app_mode"] == "home":
 
     with rc:
         st.markdown(
-            '<div class="card" style="{cs}">'
-            '<div style="{ic}background:var(--green-soft);border:1px solid var(--green-border);">&#x1F3E2;</div>'
+            '<div class="mod-card">'
+            '<div class="mod-icon" style="background:var(--green-soft);border:1px solid var(--green-border);">&#x1F3E2;</div>'
             '<div style="font-size:1.05rem;font-weight:800;color:var(--text-primary);margin-bottom:0.5rem;">Office Suite Finder</div>'
             '<p style="font-size:0.76rem;color:var(--text-tertiary);line-height:1.65;margin:0 0 0.8rem;">Set budget, pick size, choose building with amenities, find the perfect suite with floor plans.</p>'
             '<div style="display:flex;gap:0.3rem;flex-wrap:wrap;justify-content:center;">'
             '<span class="badge badge-blue">3 Buildings</span>'
             '<span class="badge badge-green">16 Suites</span>'
-            '</div></div>'.format(cs=CARD_STYLE, ic=ICON_STYLE),
+            '</div></div>',
             unsafe_allow_html=True,
         )
         if st.button("OFFICE SUITE FINDER", use_container_width=True, key="btn_office", type="primary"):
@@ -220,14 +277,14 @@ if st.session_state["app_mode"] == "home":
     lc2, rc2 = st.columns(2, gap="large")
     with lc2:
         st.markdown(
-            '<div class="card" style="{cs}">'
-            '<div style="{ic}background:var(--amber-soft);border:1px solid var(--amber-border);">&#x1F4C4;</div>'
+            '<div class="mod-card">'
+            '<div class="mod-icon" style="background:var(--amber-soft);border:1px solid var(--amber-border);">&#x1F4C4;</div>'
             '<div style="font-size:1.05rem;font-weight:800;color:var(--text-primary);margin-bottom:0.5rem;">Lease Abstract</div>'
             '<p style="font-size:0.76rem;color:var(--text-tertiary);line-height:1.65;margin:0 0 0.8rem;">Upload a scanned lease PDF and generate a structured abstract with all key terms extracted.</p>'
             '<div style="display:flex;gap:0.3rem;flex-wrap:wrap;justify-content:center;">'
             '<span class="badge badge-amber">PDF Upload</span>'
             '<span class="badge badge-blue">Auto-Extract</span>'
-            '</div></div>'.format(cs=CARD_STYLE, ic=ICON_STYLE),
+            '</div></div>',
             unsafe_allow_html=True,
         )
         if st.button("LEASE ABSTRACT", use_container_width=True, key="btn_abstract", type="primary"):
@@ -236,14 +293,14 @@ if st.session_state["app_mode"] == "home":
 
     with rc2:
         st.markdown(
-            '<div class="card" style="{cs}">'
-            '<div style="{ic}background:var(--red-soft);border:1px solid var(--red-border);">&#x1F4DD;</div>'
+            '<div class="mod-card">'
+            '<div class="mod-icon" style="background:var(--red-soft);border:1px solid var(--red-border);">&#x1F4DD;</div>'
             '<div style="font-size:1.05rem;font-weight:800;color:var(--text-primary);margin-bottom:0.5rem;">Lease Proposal</div>'
             '<p style="font-size:0.76rem;color:var(--text-tertiary);line-height:1.65;margin:0 0 0.8rem;">Generate a professional LOI: select building, fill in lease details, download ready-to-send proposal.</p>'
             '<div style="display:flex;gap:0.3rem;flex-wrap:wrap;justify-content:center;">'
             '<span class="badge badge-green">3 Buildings</span>'
             '<span class="badge badge-amber">Download .docx</span>'
-            '</div></div>'.format(cs=CARD_STYLE, ic=ICON_STYLE),
+            '</div></div>',
             unsafe_allow_html=True,
         )
         if st.button("LEASE PROPOSAL", use_container_width=True, key="btn_proposal", type="primary"):
@@ -268,13 +325,24 @@ if st.session_state["app_mode"] == "home":
         ("rent", "&#x1F4B0;", "Rent Tracker"),
     ]
 
+    st.markdown(
+        '<style>'
+        '.qa-tile { text-align:center; padding:1rem 0.4rem 0.6rem; border:1px solid var(--border); '
+        'border-radius:var(--radius-sm); background:var(--bg-card); transition:all 0.22s ease; box-shadow:var(--shadow-sm); }'
+        '.qa-tile:hover { border-color:var(--accent-border); background:var(--accent-soft); transform:translateY(-2px); box-shadow:var(--shadow-md); }'
+        '.qa-tile .qi { font-size:1.4rem; margin-bottom:0.35rem; }'
+        '.qa-tile .ql { font-size:0.6rem; font-weight:700; color:var(--text-tertiary); letter-spacing:0.4px; text-transform:uppercase; line-height:1.3; }'
+        '</style>',
+        unsafe_allow_html=True,
+    )
+
     qa_cols = st.columns(len(QA_ITEMS), gap="small")
     for idx, (mode, icon, label) in enumerate(QA_ITEMS):
         with qa_cols[idx]:
             st.markdown(
-                '<div style="text-align:center;padding:0.6rem 0.3rem 0.2rem;">'
-                '<div style="font-size:1.3rem;margin-bottom:0.3rem;">{icon}</div>'
-                '<div style="font-size:0.62rem;font-weight:600;color:var(--text-tertiary);letter-spacing:0.3px;">{label}</div>'
+                '<div class="qa-tile">'
+                '<div class="qi">{icon}</div>'
+                '<div class="ql">{label}</div>'
                 '</div>'.format(icon=icon, label=label),
                 unsafe_allow_html=True,
             )
@@ -290,10 +358,9 @@ if st.session_state["app_mode"] == "home":
     )
 
     # Hidden install instructions
-    with st.expander("", expanded=False):
+    with st.expander("Install PATTON on your device", expanded=False):
         st.markdown(
-            '<div style="text-align:center;padding:0.8rem 0.5rem;">'
-            '<div style="font-size:0.82rem;font-weight:700;color:var(--text-primary);margin-bottom:0.8rem;">Install PATTON on your device</div>'
+            '<div style="text-align:center;padding:0.5rem;">'
             '<div style="text-align:left;max-width:360px;margin:0 auto;">'
             '<div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:0.6rem;">'
             '<b>Desktop (Chrome)</b><br>'

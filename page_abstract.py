@@ -319,13 +319,26 @@ def _render_edit_fields(fields, filename=""):
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             use_container_width=True, key=pfx + "_dl", type="primary",
         )
+        st.markdown(
+            '<div style="text-align:center;font-size:0.72rem;color:var(--green);margin-top:0.4rem;font-weight:600;">'
+            '&#10003; Abstract ready &mdash; click above to download</div>',
+            unsafe_allow_html=True,
+        )
     except Exception as e:
         st.error("Error generating abstract: {}".format(e))
         docx_bytes = None
 
-    # Add to Tenant Folder option
+    # ── Add to Tenant Folder ────────────────────────────
     st.markdown("---")
-    st.markdown("##### Add to Tenant Folder")
+    st.markdown(
+        '<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.6rem;">'
+        '<span style="font-size:1.2rem;">&#128193;</span>'
+        '<span style="font-size:0.95rem;font-weight:700;color:var(--text-primary);">Add to Tenant Folder</span>'
+        '</div>'
+        '<div style="font-size:0.74rem;color:var(--text-muted);margin-bottom:0.8rem;">'
+        'Save this abstract to a tenant folder so it is organized and downloadable anytime.</div>',
+        unsafe_allow_html=True,
+    )
 
     folders = shared_db.get("tenant_folders", {})
     folder_names = list(folders.keys())
@@ -336,12 +349,12 @@ def _render_edit_fields(fields, filename=""):
             selected_folder = st.selectbox("Choose existing folder", [""] + folder_names, key=pfx + "_tf_sel")
         else:
             selected_folder = ""
-            st.markdown('<div style="font-size:0.78rem;color:var(--text-muted);">No folders yet</div>', unsafe_allow_html=True)
+            st.markdown('<div style="font-size:0.74rem;color:var(--text-muted);padding-top:0.3rem;">No folders yet &mdash; create one &rarr;</div>', unsafe_allow_html=True)
     with fc2:
         new_folder = st.text_input("Or create new folder", value=tenant_name, key=pfx + "_tf_new")
 
     folder_target = selected_folder if selected_folder else new_folder
-    if folder_target and st.button("Save to '{}'".format(folder_target), key=pfx + "_tf_save", type="primary"):
+    if folder_target and st.button("Save to folder: {}".format(folder_target), key=pfx + "_tf_save", type="primary", use_container_width=True):
         if folder_target not in folders:
             folders[folder_target] = []
         doc_entry = {
@@ -358,7 +371,8 @@ def _render_edit_fields(fields, filename=""):
             st.session_state["_tenant_docx"][fname] = docx_bytes
         folders[folder_target].append(doc_entry)
         shared_db.put("tenant_folders", folders)
-        st.success("Saved to tenant folder: {}".format(folder_target))
+        st.success("Saved to tenant folder: {}  —  open Tenant Folders to view it.".format(folder_target))
+        st.balloons()
 
 
 # ═══════════════════════════════════════════════════════

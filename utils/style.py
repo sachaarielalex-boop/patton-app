@@ -133,8 +133,26 @@ html, body, [class*="css"] {
 #MainMenu, footer { visibility: hidden !important; height: 0 !important; }
 header[data-testid="stHeader"] { background: transparent !important; }
 .stApp { background: var(--bg-secondary) !important; }
-.block-container { padding: 1rem 2rem 2rem !important; max-width: 1400px; }
+.block-container { padding: 1rem 2rem 2rem !important; max-width: 1400px; position: relative; }
 iframe { border: none !important; }
+
+/* ── Page top accent line ──────────────────── */
+.block-container::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent) 0%, var(--gold) 100%);
+    z-index: 999;
+    opacity: 0.9;
+}
+
+/* ── Global animations ─────────────────────── */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.card, .kpi-card, .scenario-card, .chart-card, .verdict-box, .addr-result {
+    animation: fadeUp 0.4s ease both;
+}
 
 /* ── Sidebar ───────────────────────────────── */
 section[data-testid="stSidebar"] {
@@ -147,29 +165,39 @@ section[data-testid="stSidebar"] > div { padding-top: 0.5rem; }
 section[data-testid="stSidebar"] label,
 section[data-testid="stSidebar"] .stMarkdown p,
 section[data-testid="stSidebar"] .stMarkdown span {
-    color: var(--text-muted) !important;
-    font-size: 0.75rem !important;
-    line-height: 1.4 !important;
+    color: rgba(255,255,255,0.5) !important;
+    font-size: 0.68rem !important;
+    line-height: 1.45 !important;
+    letter-spacing: 0.3px !important;
+}
+section[data-testid="stSidebar"] .stTextInput label,
+section[data-testid="stSidebar"] .stSelectbox label {
+    font-size: 0.62rem !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1.2px !important;
+    color: rgba(255,255,255,0.45) !important;
+    margin-bottom: 0.25rem !important;
 }
 section[data-testid="stSidebar"] .stMarkdown h1,
 section[data-testid="stSidebar"] .stMarkdown h2,
 section[data-testid="stSidebar"] .stMarkdown h3,
 section[data-testid="stSidebar"] .stMarkdown h4,
 section[data-testid="stSidebar"] .stMarkdown h5 {
-    font-size: 0.72rem !important;
+    font-size: 0.62rem !important;
     font-weight: 700 !important;
-    color: rgba(255,255,255,0.6) !important;
-    letter-spacing: 1px !important;
+    color: rgba(255,255,255,0.55) !important;
+    letter-spacing: 1.2px !important;
     text-transform: uppercase !important;
-    margin: 0.5rem 0 0.3rem !important;
+    margin: 0.6rem 0 0.3rem !important;
 }
 section[data-testid="stSidebar"] .stMarkdown div {
-    font-size: 0.72rem !important;
+    font-size: 0.68rem !important;
     word-wrap: break-word !important;
     overflow-wrap: break-word !important;
 }
 section[data-testid="stSidebar"] .element-container {
-    margin-bottom: 0.2rem !important;
+    margin-bottom: 0.25rem !important;
 }
 section[data-testid="stSidebar"] .stTextInput input {
     background: rgba(255,255,255,0.95) !important;
@@ -396,7 +424,7 @@ section[data-testid="stSidebar"] .stSelectbox svg { fill: #64748b !important; }
     transition: color 0.2s;
 }
 .stTabs [data-baseweb="tab"]:hover { color: var(--text-primary) !important; }
-.stTabs [aria-selected="true"] { color: var(--text-primary) !important; border-bottom: 2px solid var(--accent) !important; }
+.stTabs [aria-selected="true"] { color: var(--text-primary) !important; border-bottom: 3px solid var(--accent) !important; transition: border-bottom 0.25s ease; }
 
 /* ── Metric Override ───────────────────────── */
 div[data-testid="stMetric"] label { font-size: 0.62rem !important; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted) !important; }
@@ -497,10 +525,29 @@ div[data-testid="stMetric"] [data-testid="stMetricValue"] { color: var(--text-pr
 }
 
 /* ── Scrollbar ─────────────────────────────── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--bg-secondary); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── Expander chevron animation ────────────── */
+.stExpander summary svg, details summary svg { transition: transform 0.25s ease; }
+
+/* ── Download button polish ────────────────── */
+.stDownloadButton > button {
+    background: linear-gradient(135deg, var(--green) 0%, #047857 100%) !important;
+    border: none !important; border-radius: var(--radius-sm) !important;
+    color: #fff !important; font-weight: 700 !important; letter-spacing: 0.8px !important;
+    transition: all 0.2s ease !important; box-shadow: 0 2px 8px rgba(5,150,105,0.25) !important;
+}
+.stDownloadButton > button:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(5,150,105,0.4) !important; }
+
+/* ── Responsive: stack home cards on mobile ── */
+@media (max-width: 640px) {
+    .block-container { padding: 0.5rem 1rem 1.5rem !important; }
+    .kpi-grid { grid-template-columns: 1fr 1fr !important; }
+    .scenario-grid { grid-template-columns: 1fr !important; }
+}
 
 /* ── Selection ─────────────────────────────── */
 ::selection { background: rgba(37,99,235,0.2); color: var(--text-primary); }
