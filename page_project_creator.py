@@ -3,7 +3,7 @@ import streamlit as st
 import math
 import datetime
 import shared_db
-from utils.devplan import compute_dev_plan
+from utils.devplan import compute_dev_plan, scenario_comparison
 from utils.property_data import format_currency
 
 STEPS = ["Site", "Zoning", "Program", "Review"]
@@ -232,6 +232,172 @@ def _step_html(num, title, formula, note):
     ).format(num=num, title=title, formula=formula, note=note)
 
 
+def _verdict(p, dp):
+    """Return (label, color_var, bg_var, rationale) investment recommendation."""
+    margin = dp["profit_margin"]
+    dscr = dp["dscr"]
+    spread = dp["return_on_cost"] - p.get("exit_cap", 5.0)  # development spread, %
+    if margin >= 15 and dscr >= 1.25 and spread >= 1.0:
+        return ("PROCEED", "var(--green)", "var(--green-soft)",
+                "Strong margin, healthy debt coverage and a development spread above the market cap rate.")
+    if margin >= 5 and dscr >= 1.10:
+        return ("PROCEED WITH CAUTION", "var(--amber)", "var(--amber-soft)",
+                "Returns are positive but thin &mdash; the deal is sensitive to cost overruns, rent softness or cap-rate expansion.")
+    return ("DO NOT PROCEED", "var(--red)", "var(--red-soft)",
+            "Projected returns and/or debt coverage fall below institutional thresholds at these assumptions.")
+
+
+def _exec_summary_html(p, dp):
+    """Top-of-memo headline: verdict banner + the four numbers a principal reads first."""
+    fc = format_currency
+    label, col, bg, rationale = _verdict(p, dp)
+    spread = dp["return_on_cost"] - p.get("exit_cap", 5.0)
+    pcol = "var(--green)" if dp["profit"] > 0 else "var(--red)"
+    metrics = [
+        ("Total Capitalization", fc(dp["total_dev_cost"]), "All-in cost to build", "var(--text-primary)"),
+        ("Stabilized Value", fc(dp["value_at_cap"]), "{:.1f}% exit cap".format(p.get("exit_cap", 5.0)), "var(--text-primary)"),
+        ("Projected Profit", fc(dp["profit"]), "{:.1f}% margin on cost".format(dp["profit_margin"]), pcol),
+        ("Yield on Cost", "{:.2f}%".format(dp["return_on_cost"]), "{:+.2f}% spread to cap".format(spread),
+         "var(--green)" if spread >= 1.0 else ("var(--amber)" if spread >= 0 else "var(--red)")),
+    ]
+    cells = ""
+    for lbl, val, sub, vc in metrics:
+        cells += (
+            '<div style="flex:1;min-width:130px;padding:0.2rem 0.4rem;">'
+            '<div style="font-size:0.62rem;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;color:var(--text-muted);">{lbl}</div>'
+            '<div style="font-size:1.45rem;font-weight:800;color:{vc};line-height:1.15;margin:0.15rem 0;">{val}</div>'
+            '<div style="font-size:0.68rem;color:var(--text-tertiary);">{sub}</div>'
+            '</div>'
+        ).format(lbl=lbl, val=val, sub=sub, vc=vc)
+    return (
+        '<div class="card" style="padding:1.2rem 1.4rem;">'
+        '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.4rem;">'
+        '<div style="font-size:0.7rem;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-muted);">Investment Summary</div>'
+        '<div style="background:{bg};color:{col};border:1px solid {col};border-radius:999px;'
+        'padding:0.28rem 0.8rem;font-size:0.72rem;font-weight:800;letter-spacing:0.5px;">{label}</div>'
+        '</div>'
+        '<div style="display:flex;flex-wrap:wrap;gap:0.6rem;margin:0.4rem 0 0.6rem;">{cells}</div>'
+        '<div style="font-size:0.76rem;color:var(--text-secondary);line-height:1.5;border-top:1px solid var(--border);padding-top:0.6rem;">'
+        '<b style="color:{col};">Recommendation:</b> {rationale}</div>'
+        '</div>'
+    ).format(bg=bg, col=col, label=label, cells=cells, rationale=rationale)
+
+
+def _sources_uses_html(p, dp):
+    """Sources & Uses table — the capital stack a lender/investor expects to see."""
+    fc = format_currency
+    total = dp["total_dev_cost"] or 1
+    uses = [
+        ("Land Acquisition", dp["land_price"]),
+        ("Hard Costs (construction)", dp["hard_cost"]),
+        ("Soft Costs (design, permits, fees)", dp["soft_cost"]),
+        ("Parking", dp["parking_cost"]),
+    ]
+    use_rows = ""
+    for lbl, amt in uses:
+        use_rows += (
+            '<tr><td style="padding:0.32rem 0;color:var(--text-secondary);font-size:0.8rem;">{lbl}</td>'
+            '<td style="padding:0.32rem 0;text-align:right;color:var(--text-primary);font-weight:600;font-size:0.8rem;">{amt}</td>'
+            '<td style="padding:0.32rem 0;text-align:right;color:var(--text-muted);font-size:0.72rem;width:54px;">{pct:.0f}%</td></tr>'
+        ).format(lbl=lbl, amt=fc(amt), pct=amt / total * 100)
+    src = [
+        ("Senior Debt ({:.0f}% LTV)".format(p.get("ltv", 65)), dp["loan_amount"], "var(--accent)"),
+        ("Sponsor / LP Equity", dp["equity"], "var(--gold)"),
+    ]
+    src_rows = ""
+    for lbl, amt, c in src:
+        src_rows += (
+            '<tr><td style="padding:0.32rem 0;font-size:0.8rem;color:var(--text-secondary);">'
+            '<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:{c};margin-right:6px;"></span>{lbl}</td>'
+            '<td style="padding:0.32rem 0;text-align:right;color:var(--text-primary);font-weight:600;font-size:0.8rem;">{amt}</td>'
+            '<td style="padding:0.32rem 0;text-align:right;color:var(--text-muted);font-size:0.72rem;width:54px;">{pct:.0f}%</td></tr>'
+        ).format(lbl=lbl, amt=fc(amt), pct=amt / total * 100, c=c)
+    bar = (
+        '<div style="display:flex;height:10px;border-radius:5px;overflow:hidden;margin:0.5rem 0 0.2rem;">'
+        '<div style="width:{lw:.1f}%;background:var(--accent);"></div>'
+        '<div style="width:{ew:.1f}%;background:var(--gold);"></div></div>'
+    ).format(lw=dp["loan_amount"] / total * 100, ew=dp["equity"] / total * 100)
+    return (
+        '<div class="card" style="padding:1.1rem 1.3rem;">'
+        '<div style="font-size:0.95rem;font-weight:800;color:var(--text-primary);margin-bottom:0.5rem;">Sources &amp; Uses</div>'
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:1.4rem;">'
+        '<div><div style="font-size:0.66rem;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-muted);margin-bottom:0.2rem;">Uses of Funds</div>'
+        '<table style="width:100%;border-collapse:collapse;">{use_rows}'
+        '<tr><td style="padding:0.4rem 0 0;border-top:1px solid var(--border);font-weight:800;font-size:0.82rem;color:var(--text-primary);">Total</td>'
+        '<td style="padding:0.4rem 0 0;border-top:1px solid var(--border);text-align:right;font-weight:800;font-size:0.82rem;color:var(--text-primary);">{tot}</td><td style="border-top:1px solid var(--border);"></td></tr></table></div>'
+        '<div><div style="font-size:0.66rem;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-muted);margin-bottom:0.2rem;">Sources of Capital</div>'
+        '<table style="width:100%;border-collapse:collapse;">{src_rows}</table>{bar}'
+        '<div style="font-size:0.7rem;color:var(--text-muted);margin-top:0.3rem;">'
+        'Equity multiple at exit: <b style="color:var(--text-secondary);">{em:.2f}x</b> &middot; '
+        'DSCR <b style="color:var(--text-secondary);">{dscr:.2f}x</b></div></div>'
+        '</div></div>'
+    ).format(
+        use_rows=use_rows, src_rows=src_rows, bar=bar, tot=fc(dp["total_dev_cost"]),
+        em=((dp["value_at_cap"] - dp["loan_amount"]) / dp["equity"]) if dp["equity"] else 0,
+        dscr=dp["dscr"],
+    )
+
+
+def _scenarios_html(p):
+    """Conservative / Base / Upside sensitivity — shows the deal under stress."""
+    fc = format_currency
+    base_inputs = {
+        "lot_sf": p["lot_sf"], "far": p["far"], "max_height_ft": p["max_ht"],
+        "max_floors": p["max_fl"], "floor_efficiency": p["floor_eff"] / 100.0,
+        "rentable_efficiency": p["rent_eff"] / 100.0, "avg_unit_sf": p["avg_unit_sf"],
+        "res_pct": p["res_pct"], "office_pct": p["office_pct"], "retail_pct": p["retail_pct"],
+        "parking_ratio": p["parking_ratio"], "construction_psf": p["construction_psf"],
+        "soft_cost_pct": p["soft_cost_pct"], "land_price": p["land_price"],
+        "target_rent_res": p["target_rent_res"], "target_rent_office": p["target_rent_office"],
+        "target_rent_retail": p["target_rent_retail"], "exit_cap": p["exit_cap"],
+        "interest_rate": p["interest_rate"], "ltv": p["ltv"], "opex_ratio": 35,
+    }
+    sc = scenario_comparison(base_inputs)
+    cols = [
+        ("Conservative", sc["conservative"], "+15% costs, -10% rent, +75bps cap"),
+        ("Base Case", sc["base"], "Your assumptions"),
+        ("Upside", sc["upside"], "-8% costs, +10% rent, -50bps cap"),
+    ]
+    cards = ""
+    for name, d, assume in cols:
+        pcol = "var(--green)" if d["profit"] > 0 else "var(--red)"
+        highlight = "border:1.5px solid var(--accent);" if name == "Base Case" else "border:1px solid var(--border);"
+        cards += (
+            '<div style="flex:1;min-width:150px;background:var(--bg-secondary);{hl}border-radius:10px;padding:0.8rem 0.9rem;">'
+            '<div style="font-size:0.78rem;font-weight:800;color:var(--text-primary);">{name}</div>'
+            '<div style="font-size:0.62rem;color:var(--text-muted);margin-bottom:0.5rem;min-height:1.6em;">{assume}</div>'
+            '<div style="font-size:0.6rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">Profit</div>'
+            '<div style="font-size:1.1rem;font-weight:800;color:{pcol};">{profit}</div>'
+            '<div style="display:flex;justify-content:space-between;margin-top:0.4rem;font-size:0.72rem;">'
+            '<span style="color:var(--text-tertiary);">Margin</span><span style="color:var(--text-secondary);font-weight:700;">{margin:.1f}%</span></div>'
+            '<div style="display:flex;justify-content:space-between;font-size:0.72rem;">'
+            '<span style="color:var(--text-tertiary);">Yield on cost</span><span style="color:var(--text-secondary);font-weight:700;">{roc:.2f}%</span></div>'
+            '<div style="display:flex;justify-content:space-between;font-size:0.72rem;">'
+            '<span style="color:var(--text-tertiary);">DSCR</span><span style="color:var(--text-secondary);font-weight:700;">{dscr:.2f}x</span></div>'
+            '</div>'
+        ).format(name=name, assume=assume, pcol=pcol, profit=fc(d["profit"]),
+                 margin=d["profit_margin"], roc=d["return_on_cost"], dscr=d["dscr"], hl=highlight)
+    return (
+        '<div class="card" style="padding:1.1rem 1.3rem;">'
+        '<div style="font-size:0.95rem;font-weight:800;color:var(--text-primary);margin-bottom:0.2rem;">Sensitivity &amp; Scenarios</div>'
+        '<div style="font-size:0.76rem;color:var(--text-muted);margin-bottom:0.7rem;">'
+        'How the deal holds up if costs, rents and cap rates move against (or for) us. A deal that still profits in the conservative column is a resilient deal.</div>'
+        '<div style="display:flex;gap:0.7rem;flex-wrap:wrap;">{cards}</div>'
+        '</div>'
+    ).format(cards=cards)
+
+
+def _disclaimer_html():
+    return (
+        '<div style="font-size:0.68rem;color:var(--text-muted);line-height:1.5;margin-top:0.4rem;padding:0.6rem 0.2rem;">'
+        'This is a preliminary, high-level feasibility study generated from the inputs above and standard '
+        'underwriting assumptions (5% vacancy, 35% operating-expense ratio, 30-year amortization). It is not an '
+        'appraisal, offering, or investment advice. Actual results depend on entitlements, detailed design, '
+        'construction bids, financing terms and market conditions at delivery.'
+        '</div>'
+    )
+
+
 def _breakdown_html(p, dp):
     """Plain-English, client-facing explanation of how every number is derived."""
     fc = format_currency
@@ -437,10 +603,18 @@ def render_project_creator():
                 profit=format_currency(dp["profit"]), margin=dp["profit_margin"],
                 roc=dp["return_on_cost"],
             )
+            # 1. Executive summary + recommendation (what a principal reads first).
+            st.markdown(_exec_summary_html(p, dp), unsafe_allow_html=True)
+            # 2. Project facts table.
             st.markdown(rows, unsafe_allow_html=True)
-
-            # Plain-English walkthrough of how every number was derived.
+            # 3. Capital stack.
+            st.markdown(_sources_uses_html(p, dp), unsafe_allow_html=True)
+            # 4. Downside/upside stress test.
+            st.markdown(_scenarios_html(p), unsafe_allow_html=True)
+            # 5. Plain-English walkthrough of how every number was derived.
             st.markdown(_breakdown_html(p, dp), unsafe_allow_html=True)
+            # 6. Professional disclaimer.
+            st.markdown(_disclaimer_html(), unsafe_allow_html=True)
 
             p["name"] = st.text_input("Confirm project name", value=p["name"] or (p["address"] or "Untitled Project"),
                                       key="pc_finalname")

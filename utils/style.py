@@ -553,6 +553,38 @@ div[data-testid="stMetric"] [data-testid="stMetricValue"] { color: var(--text-pr
 ::selection { background: rgba(37,99,235,0.2); color: var(--text-primary); }
 """
 
+# In dark mode, many inline styles hard-code dark hex text colors that become
+# invisible on a dark background. These attribute-selector rules remap those
+# fixed colors to theme-aware colors so all text stays readable. Scoped to the
+# main content area so the (always-dark) sidebar is untouched. Matching is
+# substring-based, so `background-color:#0f172a` also matches — that is harmless
+# because forcing light text on a dark background is exactly what we want.
+DARK_OVERRIDES = """
+section[data-testid="stMain"] [style*="color:#0f172a"],
+section[data-testid="stMain"] [style*="color: #0f172a"],
+section[data-testid="stMain"] [style*="color:#020617"],
+section[data-testid="stMain"] [style*="color:#0b1220"],
+section[data-testid="stMain"] [style*="color:#1e293b"],
+section[data-testid="stMain"] [style*="color: #1e293b"],
+section[data-testid="stMain"] [style*="color:#1a202c"],
+section[data-testid="stMain"] [style*="color:#111"],
+section[data-testid="stMain"] [style*="color:#000"] {
+    color: var(--text-primary) !important;
+}
+section[data-testid="stMain"] [style*="color:#334155"],
+section[data-testid="stMain"] [style*="color: #334155"],
+section[data-testid="stMain"] [style*="color:#1f2937"],
+section[data-testid="stMain"] [style*="color:#374151"] {
+    color: var(--text-secondary) !important;
+}
+section[data-testid="stMain"] [style*="color:#475569"],
+section[data-testid="stMain"] [style*="color: #475569"],
+section[data-testid="stMain"] [style*="color:#64748b"],
+section[data-testid="stMain"] [style*="color: #64748b"] {
+    color: var(--text-tertiary) !important;
+}
+"""
+
 
 def inject_css():
     if "theme" not in st.session_state:
@@ -560,9 +592,10 @@ def inject_css():
 
     theme = st.session_state["theme"]
     theme_vars = LIGHT_VARS if theme == "light" else DARK_VARS
+    body = CSS_BODY + (DARK_OVERRIDES if theme == "dark" else "")
 
     full_css = "<style>\n:root {{\n{vars}\n}}\n{body}\n</style>".format(
-        vars=theme_vars, body=CSS_BODY
+        vars=theme_vars, body=body
     )
     st.markdown(full_css, unsafe_allow_html=True)
 
