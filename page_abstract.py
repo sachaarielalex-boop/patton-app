@@ -41,6 +41,60 @@ def _add_to_scan_history(fields, filename, page_images=None):
     _save_scan_history(history[:50])
 
 
+def _render_add_to_folder_picker(history):
+    """Folder picker shown when the user clicks '+' on a past scan in the sidebar."""
+    add_idx = st.session_state.get("_abs_add_folder")
+    if add_idx is None or add_idx >= len(history):
+        return
+    item = history[add_idx]
+    folders = shared_db.get("tenant_folders", {})
+    folder_names = list(folders.keys())
+
+    with st.container(border=True):
+        st.markdown(
+            '<div style="font-size:0.95rem;font-weight:700;color:var(--text-primary);margin-bottom:0.5rem;">'
+            'Add &laquo;{} &mdash; Suite {}&raquo; to a Tenant Folder</div>'.format(
+                item["tenant"], item.get("suite", "") or "-"
+            ),
+            unsafe_allow_html=True,
+        )
+        ac1, ac2 = st.columns(2)
+        with ac1:
+            sel = st.selectbox("Choose existing folder", [""] + folder_names, key="abs_add_sel") if folder_names else ""
+        with ac2:
+            newf = st.text_input("Or create new folder", value=item["tenant"], key="abs_add_new")
+        target = sel if sel else newf
+        bc1, bc2 = st.columns(2)
+        with bc1:
+            if target and st.button("Save to folder: {}".format(target), key="abs_add_save", type="primary", use_container_width=True):
+                docx_bytes = None
+                try:
+                    docx_bytes = _generate_abstract_docx(item["fields"])
+                except Exception:
+                    docx_bytes = None
+                if target not in folders:
+                    folders[target] = []
+                fname = "LEASE_ABSTRACT_{}.docx".format(item["tenant"].replace(" ", "_").upper()[:25])
+                entry = {
+                    "type": "Lease Abstract",
+                    "tenant": item["tenant"],
+                    "filename": fname,
+                    "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "fields": dict(item["fields"]),
+                }
+                if docx_bytes:
+                    entry["docx_b64"] = base64.b64encode(docx_bytes).decode("ascii")
+                folders[target].append(entry)
+                shared_db.put("tenant_folders", folders)
+                st.session_state.pop("_abs_add_folder", None)
+                st.success("Added to tenant folder: {}  —  view it in Tenant Folders.".format(target))
+                st.rerun()
+        with bc2:
+            if st.button("Cancel", key="abs_add_cancel", use_container_width=True):
+                st.session_state.pop("_abs_add_folder", None)
+                st.rerun()
+
+
 def render_abstract_page():
     from utils.style import inject_css, LOGO_B64
     inject_css()
@@ -61,13 +115,17 @@ def render_abstract_page():
     if history:
         for i, h in enumerate(history):
             label = "{} - {}".format(h["tenant"], h.get("suite", ""))
-            sc1, sc2 = st.sidebar.columns([0.82, 0.18])
+            sc1, sc2, sc3 = st.sidebar.columns([0.64, 0.18, 0.18])
             with sc1:
                 if st.button(label, key="scan_hist_{}".format(i), use_container_width=True):
                     st.session_state["_load_scan"] = i
                     st.rerun()
             with sc2:
-                if st.button("X", key="del_scan_{}".format(i)):
+                if st.button("+", key="addf_scan_{}".format(i), help="Add to a tenant folder", use_container_width=True):
+                    st.session_state["_abs_add_folder"] = i
+                    st.rerun()
+            with sc3:
+                if st.button("X", key="del_scan_{}".format(i), use_container_width=True):
                     history.pop(i)
                     _save_scan_history(history)
                     st.rerun()
@@ -88,6 +146,9 @@ def render_abstract_page():
         '</div>'.format(logo=logo_tag),
         unsafe_allow_html=True,
     )
+
+    # Folder picker triggered by the "+" button on a past scan in the sidebar
+    _render_add_to_folder_picker(history)
 
     # Check if loading from history
     load_idx = st.session_state.pop("_load_scan", None)

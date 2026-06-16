@@ -56,6 +56,76 @@ def _add_to_proposal_history(tenant, building, suite, fields):
     _save_proposal_history(history[:50])
 
 
+def _render_add_to_folder_picker(history):
+    """Folder picker shown when the user clicks '+' on a past proposal in the sidebar."""
+    add_idx = st.session_state.get("_prop_add_folder")
+    if add_idx is None or add_idx >= len(history):
+        return
+    item = history[add_idx]
+    fields = item.get("fields", {})
+    folders = shared_db.get("tenant_folders", {})
+    folder_names = list(folders.keys())
+
+    with st.container(border=True):
+        st.markdown(
+            '<div style="font-size:0.95rem;font-weight:700;color:var(--text-primary);margin-bottom:0.5rem;">'
+            'Add &laquo;{} &mdash; {}&raquo; to a Tenant Folder</div>'.format(
+                item["tenant"], item["building"]
+            ),
+            unsafe_allow_html=True,
+        )
+        ac1, ac2 = st.columns(2)
+        with ac1:
+            sel = st.selectbox("Choose existing folder", [""] + folder_names, key="prop_add_sel") if folder_names else ""
+        with ac2:
+            newf = st.text_input("Or create new folder", value=item["tenant"], key="prop_add_new")
+        target = sel if sel else newf
+        bc1, bc2 = st.columns(2)
+        with bc1:
+            if target and st.button("Save to folder: {}".format(target), key="prop_add_save", type="primary", use_container_width=True):
+                bi = BUILDINGS_INFO.get(fields.get("building_key")) or {
+                    "name": item["building"], "address": "", "management": "", "parking_rate": "",
+                }
+                docx_bytes = None
+                try:
+                    docx_bytes = _generate_proposal_docx(
+                        building=bi,
+                        tenant_name=item["tenant"],
+                        suite=item.get("suite", ""),
+                        rsf=fields.get("rsf", ""),
+                        rate=fields.get("rate", "$42.00"),
+                        term=fields.get("term", "Five (5) Years"),
+                        parking_rate=bi.get("parking_rate", ""),
+                    )
+                except Exception:
+                    docx_bytes = None
+                if target not in folders:
+                    folders[target] = []
+                fname = "LOI_{}_{}.docx".format(
+                    item["tenant"].replace(" ", "_").upper()[:20],
+                    item["building"].replace(" ", "_").upper()[:15],
+                )
+                entry = {
+                    "type": "Lease Proposal",
+                    "tenant": item["tenant"],
+                    "filename": fname,
+                    "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "fields": {"building": item["building"], "suite": item.get("suite", ""),
+                               "rate": fields.get("rate", ""), "term": fields.get("term", "")},
+                }
+                if docx_bytes:
+                    entry["docx_b64"] = base64.b64encode(docx_bytes).decode("ascii")
+                folders[target].append(entry)
+                shared_db.put("tenant_folders", folders)
+                st.session_state.pop("_prop_add_folder", None)
+                st.success("Added to tenant folder: {}  —  view it in Tenant Folders.".format(target))
+                st.rerun()
+        with bc2:
+            if st.button("Cancel", key="prop_add_cancel", use_container_width=True):
+                st.session_state.pop("_prop_add_folder", None)
+                st.rerun()
+
+
 def render_proposal_page():
     from utils.style import inject_css, LOGO_B64
     inject_css()
@@ -76,13 +146,17 @@ def render_proposal_page():
     if history:
         for i, h in enumerate(history):
             label = "{} - {}".format(h["tenant"][:20], h["building"][:15])
-            pc1, pc2 = st.sidebar.columns([0.82, 0.18])
+            pc1, pc2, pc3 = st.sidebar.columns([0.64, 0.18, 0.18])
             with pc1:
                 if st.button(label, key="prop_hist_{}".format(i), use_container_width=True):
                     st.session_state["_load_proposal"] = i
                     st.rerun()
             with pc2:
-                if st.button("X", key="del_prop_{}".format(i)):
+                if st.button("+", key="addf_prop_{}".format(i), help="Add to a tenant folder", use_container_width=True):
+                    st.session_state["_prop_add_folder"] = i
+                    st.rerun()
+            with pc3:
+                if st.button("X", key="del_prop_{}".format(i), use_container_width=True):
                     history.pop(i)
                     _save_proposal_history(history)
                     st.rerun()
@@ -103,6 +177,9 @@ def render_proposal_page():
         '</div>'.format(logo=logo_tag),
         unsafe_allow_html=True,
     )
+
+    # Folder picker triggered by the "+" button on a past proposal in the sidebar
+    _render_add_to_folder_picker(history)
 
     # Check if loading from history
     load_idx = st.session_state.pop("_load_proposal", None)
