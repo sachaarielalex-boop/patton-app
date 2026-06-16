@@ -196,11 +196,6 @@ if st.session_state["app_mode"] == "calendar":
     render_calendar_page()
     st.stop()
 
-if st.session_state["app_mode"] == "rent":
-    from page_rent import render_rent_page
-    render_rent_page()
-    st.stop()
-
 if st.session_state["app_mode"] == "project_creator":
     from page_project_creator import render_project_creator
     render_project_creator()
@@ -345,7 +340,6 @@ if st.session_state["app_mode"] == "home":
         ("brokers", "&#x1F4CB;", "Broker Database"),
         ("tenants", "&#x1F4C1;", "Tenant Folders"),
         ("calendar", "&#x1F4C5;", "Tenant Calendar"),
-        ("rent", "&#x1F4B0;", "Rent Tracker"),
     ]
 
     qa_cols = st.columns(len(QA_ITEMS), gap="small")
