@@ -1,12 +1,18 @@
 """Marketing Folder page – brand assets organized by category (logos, images,
-decks, media, case studies, videos). Files persist as base64 in shared_db so
-they survive Streamlit Cloud's read-only filesystem."""
+decks, media, case studies, videos). Uploaded files persist as base64 in shared_db
+so they survive Streamlit Cloud's read-only filesystem. Bundled default assets
+(e.g. the Patton logos) live in the repo under assets/<category>/ and always show."""
 import streamlit as st
+import os
 import base64
 import datetime
 import shared_db
 
 _DB_KEY = "marketing_files"
+_ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
+
+# Categories that ship with bundled default files from the repo (assets/<subdir>/).
+_DEFAULT_DIRS = {"logos": "logos"}
 
 # (key, icon, label, description)
 CATEGORIES = [
@@ -62,6 +68,31 @@ def _fmt_size(n):
     return "{:.1f} TB".format(n)
 
 
+def _default_files(category):
+    """Bundled repo assets for a category, as (name, bytes). Empty if none."""
+    sub = _DEFAULT_DIRS.get(category)
+    if not sub:
+        return []
+    d = os.path.join(_ASSETS_DIR, sub)
+    if not os.path.isdir(d):
+        return []
+    out = []
+    for name in sorted(os.listdir(d)):
+        path = os.path.join(d, name)
+        if name.startswith(".") or not os.path.isfile(path):
+            continue
+        try:
+            with open(path, "rb") as fh:
+                out.append((name, fh.read()))
+        except Exception:
+            continue
+    return out
+
+
+def _category_count(category, store):
+    return len(store.get(category, [])) + len(_default_files(category))
+
+
 def render_marketing_page():
     from utils.style import inject_css, LOGO_B64
     inject_css()
@@ -105,7 +136,7 @@ def _render_landing():
     for row_start in (0, 2, 4):
         cols = st.columns(2, gap="large")
         for ci, (key, icon, label, desc) in enumerate(CATEGORIES[row_start:row_start + 2]):
-            count = len(store.get(key, []))
+            count = _category_count(key, store)
             with cols[ci]:
                 with st.container(border=True):
                     st.markdown(
@@ -144,9 +175,36 @@ def _render_category(cat):
 
     st.markdown("---")
 
+    # Bundled Patton brand assets (shipped with the app, always available)
+    defaults = _default_files(cat)
+    if defaults:
+        st.markdown("##### Patton brand assets")
+        for di, (name, data) in enumerate(defaults):
+            ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+            with st.container(border=True):
+                dc1, dc2 = st.columns([3, 1])
+                with dc1:
+                    st.markdown(
+                        '<div style="font-size:0.88rem;font-weight:700;color:var(--text-primary);">{}</div>'
+                        '<div style="font-size:0.7rem;color:var(--text-muted);">{} | bundled</div>'.format(
+                            name, _fmt_size(len(data))
+                        ),
+                        unsafe_allow_html=True,
+                    )
+                with dc2:
+                    st.download_button(
+                        "Download", data, name, "image/png" if ext == "png" else "application/octet-stream",
+                        key="mkt_def_dl_{}_{}".format(cat, di), use_container_width=True,
+                    )
+                if ext in _IMAGE_EXT and ext != "svg":
+                    st.image(data, width=260)
+                elif ext == "svg":
+                    st.markdown(data.decode("utf-8", "ignore"), unsafe_allow_html=True)
+        st.markdown("---")
+
     store = _get_store()
     files = store.get(cat, [])
-    if not files:
+    if not files and not defaults:
         st.markdown(
             '<div class="card" style="text-align:center;padding:2.5rem;">'
             '<div style="font-size:2rem;margin-bottom:0.8rem;">&#128193;</div>'
@@ -157,7 +215,10 @@ def _render_category(cat):
         )
         return
 
-    st.markdown("##### {} files".format(len(files)))
+    if not files:
+        return
+
+    st.markdown("##### Uploaded files ({})".format(len(files)))
     for i, f in enumerate(files):
         try:
             data = base64.b64decode(f["b64"])
