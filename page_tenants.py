@@ -124,7 +124,7 @@ def render_tenants_page():
                                     docx_bytes = None
                             if docx_bytes is not None:
                                 st.download_button(
-                                    "Download", docx_bytes, doc["filename"], _DOCX_MIME,
+                                    "Download", docx_bytes, doc["filename"], doc.get("mime", _DOCX_MIME),
                                     key="ten_dl_{}_{}".format(folder_name[:10], i),
                                 )
                             else:
@@ -134,6 +134,39 @@ def render_tenants_page():
                                 docs.pop(i)
                                 shared_db.put("tenant_folders", folders)
                                 st.rerun()
+
+                # Upload any document into this folder
+                st.markdown(
+                    '<div style="font-size:0.72rem;font-weight:700;color:var(--text-tertiary);'
+                    'letter-spacing:0.5px;text-transform:uppercase;margin:0.6rem 0 0.3rem;">Add documents</div>',
+                    unsafe_allow_html=True,
+                )
+                up = st.file_uploader(
+                    "Upload files to {}".format(folder_name),
+                    accept_multiple_files=True,
+                    key="ten_up_{}".format(folder_name[:20]),
+                    label_visibility="collapsed",
+                )
+                if up and st.button("Add {} file(s)".format(len(up)), key="ten_up_save_{}".format(folder_name[:20]), type="primary"):
+                    existing = {d.get("filename") for d in docs}
+                    added = 0
+                    for uf in up:
+                        if uf.name in existing:
+                            continue
+                        data = uf.getvalue()
+                        docs.append({
+                            "type": "Document",
+                            "tenant": folder_name,
+                            "filename": uf.name,
+                            "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                            "mime": uf.type or _DOCX_MIME,
+                            "docx_b64": base64.b64encode(data).decode("ascii"),
+                        })
+                        existing.add(uf.name)
+                        added += 1
+                    shared_db.put("tenant_folders", folders)
+                    st.success("Added {} file(s) to {}.".format(added, folder_name))
+                    st.rerun()
 
                 # Delete folder button
                 if st.button("Delete folder '{}'".format(folder_name), key="ten_del_{}".format(folder_name[:20])):

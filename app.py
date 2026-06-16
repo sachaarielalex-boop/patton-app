@@ -206,6 +206,16 @@ if st.session_state["app_mode"] == "project_creator":
     render_project_creator()
     st.stop()
 
+if st.session_state["app_mode"] == "marketing":
+    from page_marketing import render_marketing_page
+    render_marketing_page()
+    st.stop()
+
+if st.session_state["app_mode"] == "sales":
+    from page_sales import render_sales_page
+    render_sales_page()
+    st.stop()
+
 # ── HOME PAGE ─────────────────────────────────────────────
 if st.session_state["app_mode"] == "home":
     st.markdown(
@@ -289,9 +299,17 @@ if st.session_state["app_mode"] == "home":
          "var(--red-soft)", "var(--red-border)",
          "Generate a professional LOI: select building, fill in lease details, download ready-to-send proposal.",
          '<span class="badge badge-green">3 Buildings</span><span class="badge badge-amber">Download .docx</span>'),
+        ("btn_marketing", "marketing", "&#x1F4E3;", "Marketing Folder",
+         "var(--accent-soft)", "var(--accent-border)",
+         "Brand assets organized by category: logos, images, presentation decks, media, case studies and videos.",
+         '<span class="badge badge-blue">6 Categories</span><span class="badge badge-green">Upload Files</span>'),
+        ("btn_sales", "sales", "&#x1F4C8;", "Sales Folder",
+         "var(--green-soft)", "var(--green-border)",
+         "Sales reports organized by year from 2000 to 2030. Open a year and upload the related documents.",
+         '<span class="badge badge-blue">2000&ndash;2030</span><span class="badge badge-amber">Add Reports</span>'),
     ]
 
-    for row_start in (0, 2):
+    for row_start in (0, 2, 4):
         cols = st.columns(2, gap="large")
         for ci, mod in enumerate(MODULES[row_start:row_start + 2]):
             key, mode, icon, title, ibg, ibd, desc, badges = mod
@@ -309,7 +327,7 @@ if st.session_state["app_mode"] == "home":
                     if st.button("Open " + title, use_container_width=True, key=key, type="primary"):
                         st.session_state["app_mode"] = mode
                         st.rerun()
-        if row_start == 0:
+        if row_start in (0, 2):
             st.markdown('<div style="height:0.4rem;"></div>', unsafe_allow_html=True)
 
     # ── Quick Access Tabs ──────────────────────────────────

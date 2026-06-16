@@ -41,58 +41,96 @@ def _add_to_scan_history(fields, filename, page_images=None):
     _save_scan_history(history[:50])
 
 
+def _save_scan_to_folder(item, target, folders):
+    """Build the abstract .docx and file it into the chosen tenant folder."""
+    docx_bytes = None
+    try:
+        docx_bytes = _generate_abstract_docx(item["fields"])
+    except Exception:
+        docx_bytes = None
+    if target not in folders:
+        folders[target] = []
+    fname = "LEASE_ABSTRACT_{}.docx".format(item["tenant"].replace(" ", "_").upper()[:25])
+    entry = {
+        "type": "Lease Abstract",
+        "tenant": item["tenant"],
+        "filename": fname,
+        "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "fields": dict(item["fields"]),
+    }
+    if docx_bytes:
+        entry["docx_b64"] = base64.b64encode(docx_bytes).decode("ascii")
+    folders[target].append(entry)
+    shared_db.put("tenant_folders", folders)
+
+
 def _render_add_to_folder_picker(history):
-    """Folder picker shown when the user clicks '+' on a past scan in the sidebar."""
+    """Folder picker shown when the user clicks '+' on a past scan in the sidebar.
+
+    Lists every existing tenant folder so the user can move the document with one
+    click, or create a brand-new folder.
+    """
     add_idx = st.session_state.get("_abs_add_folder")
     if add_idx is None or add_idx >= len(history):
         return
     item = history[add_idx]
     folders = shared_db.get("tenant_folders", {})
-    folder_names = list(folders.keys())
+    folder_names = sorted(folders.keys())
 
     with st.container(border=True):
         st.markdown(
-            '<div style="font-size:0.95rem;font-weight:700;color:var(--text-primary);margin-bottom:0.5rem;">'
-            'Add &laquo;{} &mdash; Suite {}&raquo; to a Tenant Folder</div>'.format(
+            '<div style="font-size:0.95rem;font-weight:700;color:var(--text-primary);margin-bottom:0.2rem;">'
+            'Move &laquo;{} &mdash; Suite {}&raquo; into a Tenant Folder</div>'
+            '<div style="font-size:0.74rem;color:var(--text-muted);margin-bottom:0.7rem;">'
+            'Pick the destination folder below.</div>'.format(
                 item["tenant"], item.get("suite", "") or "-"
             ),
             unsafe_allow_html=True,
         )
-        ac1, ac2 = st.columns(2)
-        with ac1:
-            sel = st.selectbox("Choose existing folder", [""] + folder_names, key="abs_add_sel") if folder_names else ""
-        with ac2:
-            newf = st.text_input("Or create new folder", value=item["tenant"], key="abs_add_new")
-        target = sel if sel else newf
-        bc1, bc2 = st.columns(2)
-        with bc1:
-            if target and st.button("Save to folder: {}".format(target), key="abs_add_save", type="primary", use_container_width=True):
-                docx_bytes = None
-                try:
-                    docx_bytes = _generate_abstract_docx(item["fields"])
-                except Exception:
-                    docx_bytes = None
-                if target not in folders:
-                    folders[target] = []
-                fname = "LEASE_ABSTRACT_{}.docx".format(item["tenant"].replace(" ", "_").upper()[:25])
-                entry = {
-                    "type": "Lease Abstract",
-                    "tenant": item["tenant"],
-                    "filename": fname,
-                    "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "fields": dict(item["fields"]),
-                }
-                if docx_bytes:
-                    entry["docx_b64"] = base64.b64encode(docx_bytes).decode("ascii")
-                folders[target].append(entry)
-                shared_db.put("tenant_folders", folders)
+
+        if folder_names:
+            st.markdown(
+                '<div style="font-size:0.7rem;font-weight:700;color:var(--text-tertiary);'
+                'letter-spacing:0.5px;text-transform:uppercase;margin-bottom:0.4rem;">Your Folders</div>',
+                unsafe_allow_html=True,
+            )
+            fcols = st.columns(2)
+            for fi, fname in enumerate(folder_names):
+                with fcols[fi % 2]:
+                    count = len(folders[fname])
+                    if st.button(
+                        "{}  ({} docs)".format(fname, count),
+                        key="abs_moveto_{}".format(fi),
+                        use_container_width=True,
+                    ):
+                        _save_scan_to_folder(item, fname, folders)
+                        st.session_state.pop("_abs_add_folder", None)
+                        st.success("Moved into tenant folder: {}".format(fname))
+                        st.rerun()
+        else:
+            st.markdown(
+                '<div style="font-size:0.76rem;color:var(--text-muted);margin-bottom:0.5rem;">'
+                'No folders yet &mdash; create the first one below.</div>',
+                unsafe_allow_html=True,
+            )
+
+        st.markdown(
+            '<div style="border-top:1px solid var(--border);margin:0.6rem 0 0.5rem;"></div>',
+            unsafe_allow_html=True,
+        )
+        nc1, nc2 = st.columns([3, 2])
+        with nc1:
+            newf = st.text_input("Create a new folder", value=item["tenant"], key="abs_add_new")
+        with nc2:
+            st.markdown('<div style="height:1.7rem;"></div>', unsafe_allow_html=True)
+            if newf.strip() and st.button("Create & add", key="abs_add_save", type="primary", use_container_width=True):
+                _save_scan_to_folder(item, newf.strip(), folders)
                 st.session_state.pop("_abs_add_folder", None)
-                st.success("Added to tenant folder: {}  —  view it in Tenant Folders.".format(target))
+                st.success("Added to new folder: {}".format(newf.strip()))
                 st.rerun()
-        with bc2:
-            if st.button("Cancel", key="abs_add_cancel", use_container_width=True):
-                st.session_state.pop("_abs_add_folder", None)
-                st.rerun()
+        if st.button("Cancel", key="abs_add_cancel"):
+            st.session_state.pop("_abs_add_folder", None)
+            st.rerun()
 
 
 def render_abstract_page():
