@@ -4,6 +4,39 @@ import math
 
 GEO_URL = "https://nominatim.openstreetmap.org/search"
 REVERSE_URL = "https://nominatim.openstreetmap.org/reverse"
+CENSUS_URL = "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress"
+
+
+def _census_geocode(addr):
+    """Geocode a US address via the free US Census Bureau API.
+
+    Unlike Nominatim it is not IP-rate-limited, so it works reliably on Streamlit
+    Cloud. US-only (fine for Miami-Dade). Returns a geo dict or None.
+    """
+    one_line = addr if "," in addr else "{}, Miami, FL".format(addr)
+    try:
+        r = requests.get(CENSUS_URL, params={
+            "address": one_line, "benchmark": "Public_AR_Current", "format": "json",
+        }, headers={"User-Agent": "PATTON/2.0"}, timeout=15)
+        matches = r.json().get("result", {}).get("addressMatches", [])
+        if not matches:
+            return None
+        m = matches[0]
+        coords = m.get("coordinates", {})
+        comp = m.get("addressComponents", {})
+        return {
+            "lat": float(coords["y"]),
+            "lon": float(coords["x"]),
+            "display": m.get("matchedAddress", addr),
+            "city": comp.get("city", "").title() or "Miami",
+            "county": "Miami-Dade County",
+            "state": comp.get("state", "FL"),
+            "zip": comp.get("zip", ""),
+            "confidence": 90,
+            "source": "US Census",
+        }
+    except Exception:
+        return None
 
 
 def _local_lookup(addr):
@@ -47,10 +80,15 @@ def _local_lookup(addr):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def geocode(addr):
-    # Local parcel database first (reliable on Streamlit Cloud).
+    # Local parcel database first (instant, reliable on Streamlit Cloud).
     local = _local_lookup(addr)
     if local:
         return local
+
+    # US Census next (free, no key, not IP-blocked on Cloud).
+    census = _census_geocode(addr)
+    if census:
+        return census
 
     result = {"lat": None, "lon": None, "display": "", "city": "", "county": "", "state": "",
               "zip": "", "confidence": 0, "source": "Nominatim/OSM"}
