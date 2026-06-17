@@ -133,7 +133,9 @@ def _render_new_customer(buildings):
 
 def _render_building(bldg):
     import pandas as pd
-    from utils.style import tr
+    import base64
+    import shared_db
+    from utils.style import tr, require_directory_access
     from utils.property_data import format_currency, format_number
 
     # Building info card
@@ -176,28 +178,65 @@ def _render_building(bldg):
             )
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # Suite table
+    # Suite table — password-protected directory
     st.markdown('<div class="card"><div class="card-title">Suite Directory</div>', unsafe_allow_html=True)
 
-    suite_rows = []
-    for s in bldg["suites"]:
-        status = s["status"].title()
-        status_color = "#16a34a" if status == "Occupied" else ("#dc2626" if status == "Vacant" else "#d97706")
-        rate_str = "${:.2f}/sqft".format(s["rate"]) if s.get("rate") else "-"
-        asking = "${:.2f}/sqft".format(s["asking_rate"]) if s.get("asking_rate") else "-"
-        suite_rows.append({
-            "Suite": s["suite"],
-            "RSF": "{:,}".format(s["rsf"]),
-            "Tenant": s.get("tenant") or "-",
-            "Status": status,
-            "Rate": rate_str,
-            "Asking": asking,
-            "Lease End": s.get("lease_end") or "-",
-            "Annual Inc.": "{}%".format(s.get("annual_inc")) if s.get("annual_inc") else "-",
-        })
+    if require_directory_access("Suite Directory", key="dirgate_" + str(bldg["id"])):
+        suite_rows = []
+        for s in bldg["suites"]:
+            status = s["status"].title()
+            rate_str = "${:.2f}/sqft".format(s["rate"]) if s.get("rate") else "-"
+            asking = "${:.2f}/sqft".format(s["asking_rate"]) if s.get("asking_rate") else "-"
+            suite_rows.append({
+                "Suite": s["suite"],
+                "RSF": "{:,}".format(s["rsf"]),
+                "Tenant": s.get("tenant") or "-",
+                "Status": status,
+                "Rate": rate_str,
+                "Asking": asking,
+                "Lease End": s.get("lease_end") or "-",
+                "Annual Inc.": "{}%".format(s.get("annual_inc")) if s.get("annual_inc") else "-",
+            })
 
-    df = pd.DataFrame(suite_rows)
-    st.dataframe(df.astype(str), use_container_width=True, hide_index=True)
+        df = pd.DataFrame(suite_rows)
+        st.dataframe(df.astype(str), use_container_width=True, hide_index=True)
+
+        # Optional suite-directory PDF: download if present, upload to attach.
+        pdfs = shared_db.get("building_pdfs", {})
+        if not isinstance(pdfs, dict):
+            pdfs = {}
+        stored = pdfs.get(str(bldg["id"]))
+        if stored:
+            try:
+                pdf_bytes = base64.b64decode(stored["b64"])
+            except Exception:
+                pdf_bytes = b""
+            if pdf_bytes:
+                dc1, dc2 = st.columns([3, 1])
+                with dc1:
+                    st.markdown(
+                        '<div style="font-size:0.78rem;color:var(--text-secondary);">'
+                        '&#128196; {}</div>'.format(stored.get("name", "Suite directory.pdf")),
+                        unsafe_allow_html=True,
+                    )
+                with dc2:
+                    st.download_button(
+                        "Download PDF", pdf_bytes, stored.get("name", "suite_directory.pdf"),
+                        "application/pdf", key="bld_pdf_dl_" + str(bldg["id"]),
+                        use_container_width=True,
+                    )
+        up = st.file_uploader(
+            "Attach a suite-directory PDF", type=["pdf"],
+            key="bld_pdf_up_" + str(bldg["id"]),
+        )
+        if up is not None and st.button("Save PDF", key="bld_pdf_save_" + str(bldg["id"])):
+            pdfs[str(bldg["id"])] = {
+                "name": up.name,
+                "b64": base64.b64encode(up.getvalue()).decode("ascii"),
+            }
+            shared_db.put("building_pdfs", pdfs)
+            st.success("PDF attached.")
+            st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
     # Available suites highlight
@@ -247,8 +286,15 @@ def _render_building(bldg):
             )
         st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown(
-        '<div style="font-size:0.65rem;color:var(--text-muted);text-align:center;margin-top:1rem;">'
-        '{}</div>'.format(bldg.get("description", "")),
-        unsafe_allow_html=True,
-    )
+    desc = bldg.get("description", "")
+    if desc:
+        st.markdown(
+            '<div style="margin:1.4rem 0 0.5rem;padding:1rem 1.2rem;border-radius:12px;'
+            'background:var(--accent-soft);border:1px solid var(--accent-border);">'
+            '<div style="font-size:0.62rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;'
+            'color:var(--accent);margin-bottom:0.3rem;">About this building</div>'
+            '<div style="font-size:0.82rem;color:var(--text-secondary);line-height:1.6;">{}</div>'
+            '</div>'.format(desc),
+            unsafe_allow_html=True,
+        )
+    st.markdown('<div style="height:2rem;"></div>', unsafe_allow_html=True)

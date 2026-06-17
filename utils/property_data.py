@@ -639,6 +639,58 @@ def random_address(submarket):
         return None
     return random.choice(pool)
 
+def search_by_owner(query):
+    """Return every parcel whose owner matches the query (case-insensitive substring).
+
+    Each result is a dict with address, city, owner and key parcel details so the
+    UI can list all properties tied to an owner name.
+    """
+    try:
+        from parcels_data import ADDR_DATA
+    except ImportError:
+        return []
+    q = (query or "").strip().lower()
+    if not q:
+        return []
+    out = []
+    for v in ADDR_DATA.values():
+        owners = [v.get("true_owner1", ""), v.get("true_owner2", "")]
+        owner_blob = " ".join(o for o in owners if o).lower()
+        if q in owner_blob:
+            addr = v.get("Address", "")
+            city = v.get("City", "Miami")
+            state = v.get("State", "FL")
+            out.append({
+                "owner": v.get("true_owner1", "") or v.get("true_owner2", ""),
+                "address": addr,
+                "full_address": "{}, {}, {}".format(addr, city, state) if addr else "",
+                "land_use": v.get("LAND USE", ""),
+                "folio": v.get("FOLIO #", ""),
+                "sale_price": v.get("SALE PRICE", ""),
+                "sale_date": v.get("SALE DATE", ""),
+                "lot_size": v.get("LOT SIZE", ""),
+                "year_built": v.get("YEAR BUILT", ""),
+                "zoning": v.get("ZONING CODE", ""),
+            })
+    out.sort(key=lambda r: (r["owner"], r["address"]))
+    return out
+
+
+def list_owners():
+    """All distinct owner names present in the parcels dataset (for autocomplete)."""
+    try:
+        from parcels_data import ADDR_DATA
+    except ImportError:
+        return []
+    names = set()
+    for v in ADDR_DATA.values():
+        for o in (v.get("true_owner1", ""), v.get("true_owner2", "")):
+            o = (o or "").strip()
+            if o:
+                names.add(o)
+    return sorted(names)
+
+
 ALL_SUBMARKETS = list(NB.keys())
 
 def format_currency(v):

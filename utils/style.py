@@ -638,3 +638,36 @@ def score_bar(label, value, max_val=100):
         '<div class="score-bar"><div class="score-fill" style="width:{}%;background:{};"></div></div>'
         '</div>'
     ).format(label, value, max_val, pct, c)
+
+
+# Password that protects the building / suite directory across the whole app.
+# Change this value to update the directory access code everywhere.
+DIRECTORY_PASSWORD = "patton-directory"
+
+
+def require_directory_access(label="Building Directory", key="dir_gate"):
+    """Gate sensitive directory content behind a password.
+
+    Returns True once the correct password has been entered. The unlock persists
+    for the whole session, so it applies everywhere the directory appears.
+    """
+    import streamlit as st
+    if st.session_state.get("directory_unlocked"):
+        return True
+    st.markdown(
+        '<div class="card" style="text-align:center;padding:1.6rem;border:1px dashed var(--accent-border);">'
+        '<div style="font-size:1.6rem;margin-bottom:0.4rem;">&#128274;</div>'
+        '<div style="font-size:0.95rem;font-weight:700;color:var(--text-primary);">{} is protected</div>'
+        '<div style="font-size:0.78rem;color:var(--text-tertiary);margin-top:0.2rem;">'
+        'Enter the access code to view it.</div></div>'.format(label),
+        unsafe_allow_html=True,
+    )
+    pwd = st.text_input("Access code", type="password", key=key, label_visibility="collapsed",
+                        placeholder="Access code")
+    if st.button("Unlock", key=key + "_btn", type="primary"):
+        if pwd == DIRECTORY_PASSWORD:
+            st.session_state["directory_unlocked"] = True
+            st.rerun()
+        else:
+            st.error("Incorrect access code.")
+    return False

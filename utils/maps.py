@@ -44,12 +44,15 @@ def _distance_mi(lat1, lon1, lat2, lon2):
     return 3959 * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
-def render_map_2d(lat, lon, label="Property", comps=None, radius_miles=1, show_legend=True):
-    mp = folium.Map(location=[lat, lon], zoom_start=15, tiles="CartoDB positron")
+def render_map_2d(lat, lon, label="Property", comps=None, radius_miles=1, show_legend=True, zoom=16):
+    # OpenStreetMap tiles show street names and building footprints clearly, which
+    # makes it much easier to read the area and pick the right spot.
+    mp = folium.Map(location=[lat, lon], zoom_start=zoom, tiles="OpenStreetMap", control_scale=True)
 
     folium.Marker(
         [lat, lon],
-        popup=folium.Popup("<b style='font-size:13px;'>{}</b><br><span style='color:#64748b;font-size:11px;'>{:.5f}, {:.5f}</span><br><span style='background:#0f172a;color:white;padding:2px 6px;border-radius:3px;font-size:10px;'>SUBJECT</span>".format(label, lat, lon), max_width=280),
+        popup=folium.Popup("<b style='font-size:13px;'>{}</b><br><span style='background:#0f172a;color:white;padding:2px 6px;border-radius:3px;font-size:10px;'>SUBJECT</span>".format(label), max_width=280),
+        tooltip=label,
         icon=folium.Icon(color="black", icon="home", prefix="fa"),
     ).add_to(mp)
 

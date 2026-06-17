@@ -154,12 +154,93 @@ def _floor_plan_svg(suite_name, sf, suite_type="office"):
     return svg
 
 
+def _render_all_suites(buildings, all_available):
+    """Flat, filterable list of every available suite across the portfolio."""
+    st.markdown(
+        '<div class="verdict-box">'
+        '<div class="verdict-label">All Available Suites</div>'
+        '<div class="verdict-value" style="color:var(--navy);">{} suites ready to lease</div>'
+        '<div class="verdict-sub">Filter by building, size and rate &mdash; no wizard needed</div>'
+        '</div>'.format(len(all_available)),
+        unsafe_allow_html=True,
+    )
+
+    # Build a flat list with building context.
+    rows = []
+    for b in buildings:
+        for s in b["suites"]:
+            if s["status"] in AVAIL_STATUSES and s.get("asking_rate"):
+                sf = s.get("boma_rsf") or s.get("rsf", 0)
+                rows.append({"b": b, "s": s, "sf": sf, "rate": s["asking_rate"]})
+
+    if not rows:
+        st.markdown('<div class="alert-warn">No available suites right now.</div>', unsafe_allow_html=True)
+        return
+
+    bld_names = ["All buildings"] + [b["name"] for b in buildings]
+    max_rate = int(max(r["rate"] for r in rows)) + 1
+    fc1, fc2, fc3 = st.columns(3)
+    with fc1:
+        pick_b = st.selectbox("Building", bld_names, key="all_filter_bld")
+    with fc2:
+        pick_rate = st.slider("Max rate ($/sqft/yr)", 0, max_rate, max_rate, key="all_filter_rate")
+    with fc3:
+        pick_size = st.selectbox(
+            "Size", ["Any size", "Under 2,000 sqft", "2,000-5,000 sqft", "5,000-10,000 sqft", "10,000+ sqft"],
+            key="all_filter_size")
+
+    size_bounds = {
+        "Any size": (0, 10**9), "Under 2,000 sqft": (0, 2000),
+        "2,000-5,000 sqft": (2000, 5000), "5,000-10,000 sqft": (5000, 10000),
+        "10,000+ sqft": (10000, 10**9),
+    }[pick_size]
+
+    shown = [
+        r for r in rows
+        if (pick_b == "All buildings" or r["b"]["name"] == pick_b)
+        and r["rate"] <= pick_rate
+        and size_bounds[0] <= r["sf"] <= size_bounds[1]
+    ]
+    shown.sort(key=lambda r: (r["b"]["name"], r["rate"]))
+
+    st.markdown("##### {} matching suite{}".format(len(shown), "" if len(shown) == 1 else "s"))
+    for r in shown:
+        b, s, sf, rate = r["b"], r["s"], r["sf"], r["rate"]
+        annual = rate * sf
+        with st.container(border=True):
+            cc1, cc2 = st.columns([3, 1])
+            with cc1:
+                st.markdown(
+                    '<div style="font-size:1.05rem;font-weight:800;color:var(--navy);">Suite {suite} '
+                    '<span style="font-size:0.8rem;font-weight:600;color:var(--slate-500);">&middot; {bname}</span></div>'
+                    '<div style="font-size:0.72rem;color:var(--slate-500);">{addr}</div>'
+                    '<div style="display:flex;gap:0.5rem;margin-top:0.4rem;flex-wrap:wrap;">'
+                    '<span class="badge badge-blue">{sf:,} sqft</span>'
+                    '<span class="badge badge-green">${rate:.2f}/sqft/yr</span>'
+                    '<span class="badge badge-amber">{ann}/yr</span>'
+                    '<span class="badge badge-amber">{mon}/mo</span></div>'.format(
+                        suite=s["suite"], bname=b["name"], addr=b["address"], sf=sf,
+                        rate=rate, ann=format_currency(annual), mon=format_currency(annual / 12)),
+                    unsafe_allow_html=True,
+                )
+            with cc2:
+                if st.button("Open building", key="all_open_{}_{}".format(b["id"], s["suite"]),
+                             use_container_width=True, type="primary"):
+                    st.session_state.os_view_all = False
+                    st.session_state.os_building = b["id"]
+                    st.session_state.os_budget_max = 100
+                    st.session_state.os_min_sf = 0
+                    st.session_state.os_max_sf = 50000
+                    st.session_state.os_step = 3
+                    st.rerun()
+
+
 def render_office_page():
     inject_css()
 
     defaults = [("os_step", 0), ("os_building", None),
                 ("os_min_sf", 0), ("os_max_sf", 50000),
-                ("os_budget_max", 100)]
+                ("os_budget_max", 100), ("os_view_all", False)]
     for k, v in defaults:
         if k not in st.session_state:
             st.session_state[k] = v
@@ -245,6 +326,24 @@ def render_office_page():
         unsafe_allow_html=True,
     )
 
+    # ── Quick access: view every available suite without the wizard ──
+    tc1, tc2 = st.columns(2)
+    with tc1:
+        if st.button("Guided Finder (budget &rarr; size &rarr; building)".replace("&rarr;", "\u2192"),
+                     use_container_width=True, key="os_mode_wizard",
+                     type="primary" if not st.session_state.os_view_all else "secondary"):
+            st.session_state.os_view_all = False
+            st.rerun()
+    with tc2:
+        if st.button("View ALL available suites", use_container_width=True, key="os_mode_all",
+                     type="primary" if st.session_state.os_view_all else "secondary"):
+            st.session_state.os_view_all = True
+            st.rerun()
+
+    if st.session_state.os_view_all:
+        _render_all_suites(buildings, all_available)
+        return
+
     step = st.session_state.os_step
 
     choices = ["", "", "", ""]
@@ -277,6 +376,36 @@ def render_office_page():
         min_rate = int(min(rates)) if rates else 20
         max_rate = int(max(rates)) + 5 if rates else 60
 
+        st.markdown('<div class="card" style="border:2px solid var(--accent-border);"><div class="card-title">&#128176; Select Maximum Budget</div>', unsafe_allow_html=True)
+        budget_options = [
+            ("$35/sqft", 35), ("$40/sqft", 40), ("$45/sqft", 45), ("No Limit", max_rate),
+        ]
+        bcols = st.columns(len(budget_options))
+        for i, (label, bmx) in enumerate(budget_options):
+            matching = [s for s in all_available if s["asking_rate"] and s["asking_rate"] <= bmx]
+            with bcols[i]:
+                st.markdown(
+                    '<div style="text-align:center;padding:0.4rem 0;">'
+                    '<div style="font-size:0.95rem;font-weight:700;color:var(--navy);">{}</div>'
+                    '<div style="font-size:0.75rem;font-weight:600;color:#16a34a;margin-top:0.2rem;">{} suites</div>'
+                    '</div>'.format(label, len(matching)),
+                    unsafe_allow_html=True)
+                if st.button("Select", use_container_width=True, key="bgt_{}".format(i)):
+                    st.session_state.os_budget_max = bmx
+                    st.session_state.os_step = 1
+                    st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        with st.expander("Custom Max Rate"):
+            custom_max = st.slider("Max rate ($/sqft/yr)", min_rate, max_rate, max_rate, key="budget_slider")
+            matching_custom = [s for s in all_available if s["asking_rate"] and s["asking_rate"] <= custom_max]
+            st.markdown('{} suites at or below ${}/sqft'.format(len(matching_custom), custom_max))
+            if st.button("Apply", use_container_width=True, key="bgt_custom"):
+                st.session_state.os_budget_max = custom_max
+                st.session_state.os_step = 1
+                st.rerun()
+
+        # Context stats below the selection so the choice stays front-and-center.
         if rates:
             avg_rate = sum(rates) / len(rates)
             kpi_items = []
@@ -306,35 +435,6 @@ def render_office_page():
                 st.plotly_chart(fig, use_container_width=True)
                 st.markdown('</div>', unsafe_allow_html=True)
 
-        st.markdown('<div class="card"><div class="card-title">Select Maximum Budget</div>', unsafe_allow_html=True)
-        budget_options = [
-            ("$35/sqft", 35), ("$40/sqft", 40), ("$45/sqft", 45), ("No Limit", max_rate),
-        ]
-        bcols = st.columns(len(budget_options))
-        for i, (label, bmx) in enumerate(budget_options):
-            matching = [s for s in all_available if s["asking_rate"] and s["asking_rate"] <= bmx]
-            with bcols[i]:
-                st.markdown(
-                    '<div style="text-align:center;padding:0.4rem 0;">'
-                    '<div style="font-size:0.95rem;font-weight:700;color:var(--navy);">{}</div>'
-                    '<div style="font-size:0.75rem;font-weight:600;color:#16a34a;margin-top:0.2rem;">{} suites</div>'
-                    '</div>'.format(label, len(matching)),
-                    unsafe_allow_html=True)
-                if st.button("Select", use_container_width=True, key="bgt_{}".format(i)):
-                    st.session_state.os_budget_max = bmx
-                    st.session_state.os_step = 1
-                    st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        with st.expander("Custom Max Rate"):
-            custom_max = st.slider("Max rate ($/sqft/yr)", min_rate, max_rate, max_rate, key="budget_slider")
-            matching_custom = [s for s in all_available if s["asking_rate"] and s["asking_rate"] <= custom_max]
-            st.markdown('{} suites at or below ${}/sqft'.format(len(matching_custom), custom_max))
-            if st.button("Apply", use_container_width=True, key="bgt_custom"):
-                st.session_state.os_budget_max = custom_max
-                st.session_state.os_step = 1
-                st.rerun()
-
     # ══════════════════════════════════════════════════════════
     # STEP 1: Size
     # ══════════════════════════════════════════════════════════
@@ -355,16 +455,7 @@ def render_office_page():
             st.session_state.os_step = 0
             st.rerun()
 
-        if budget_suites:
-            sizes = [(s.get("boma_rsf") or s.get("rsf", 0)) for s in budget_suites]
-            kpi_items = []
-            kpi_items.append(kpi("Suites", str(len(budget_suites)), "in budget"))
-            kpi_items.append(kpi("Smallest", "{:,} sqft".format(min(sizes)), ""))
-            kpi_items.append(kpi("Largest", "{:,} sqft".format(max(sizes)), ""))
-            kpi_items.append(kpi("Total", "{:,} sqft".format(sum(sizes)), "available"))
-            st.markdown('<div class="kpi-grid">{}</div>'.format("".join(kpi_items)), unsafe_allow_html=True)
-
-        st.markdown('<div class="card"><div class="card-title">Select Size Range</div>', unsafe_allow_html=True)
+        st.markdown('<div class="card" style="border:2px solid var(--accent-border);"><div class="card-title">&#128208; Select Size Range</div>', unsafe_allow_html=True)
         size_options = [
             ("Small", 0, 2000, "Under 2,000 sqft"),
             ("Medium", 2000, 5000, "2,000 - 5,000 sqft"),
@@ -389,6 +480,15 @@ def render_office_page():
                     st.session_state.os_step = 2
                     st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
+
+        if budget_suites:
+            sizes = [(s.get("boma_rsf") or s.get("rsf", 0)) for s in budget_suites]
+            kpi_items = []
+            kpi_items.append(kpi("Suites", str(len(budget_suites)), "in budget"))
+            kpi_items.append(kpi("Smallest", "{:,} sqft".format(min(sizes)), ""))
+            kpi_items.append(kpi("Largest", "{:,} sqft".format(max(sizes)), ""))
+            kpi_items.append(kpi("Total", "{:,} sqft".format(sum(sizes)), "available"))
+            st.markdown('<div class="kpi-grid">{}</div>'.format("".join(kpi_items)), unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════
     # STEP 2: Building

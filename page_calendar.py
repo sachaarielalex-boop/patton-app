@@ -17,6 +17,20 @@ def _save_visits(visits):
     shared_db.put("tenant_visits", visits)
 
 
+def _get_contracts():
+    c = shared_db.get("tenant_contracts", [])
+    return c if isinstance(c, list) else []
+
+
+def _save_contracts(contracts):
+    shared_db.put("tenant_contracts", contracts)
+
+
+def _years_between(d1, d2):
+    """Whole + fractional years from d1 to d2 (can be negative)."""
+    return (d2 - d1).days / 365.25
+
+
 def _month_calendar_html(visits, today, year, month):
     """Render a month grid with visit markers coloured by status."""
     by_day = {}
@@ -115,7 +129,10 @@ def render_calendar_page():
         unsafe_allow_html=True,
     )
 
-    tab1, tab2, tab3 = st.tabs(["Schedule Visit", "Upcoming", "Follow-Up Email"])
+    tab1, tab2, tab4, tab3 = st.tabs(["Schedule Visit", "Upcoming", "Lease Contracts", "Follow-Up Email"])
+
+    with tab4:
+        _render_contracts(today)
 
     # ── Tab 1: Schedule ──
     with tab1:
@@ -329,3 +346,156 @@ def render_calendar_page():
                     })
                     shared_db.put("tenant_folders", folders)
                     st.success("Saved to folder: {}".format(folder_name))
+
+
+def _parse_date(val):
+    """Best-effort date parse for ISO or m/d/Y strings."""
+    if not val:
+        return None
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%-m/%-d/%Y"):
+        try:
+            return datetime.datetime.strptime(str(val), fmt).date()
+        except (ValueError, TypeError):
+            continue
+    return None
+
+
+def _collect_contracts():
+    """Manual client contracts + portfolio leases that have an end date."""
+    out = []
+    for c in _get_contracts():
+        out.append({
+            "name": c.get("name", ""),
+            "building": c.get("building", ""),
+            "suite": c.get("suite", ""),
+            "start": _parse_date(c.get("start")),
+            "end": _parse_date(c.get("end")),
+            "source": "client",
+            "raw": c,
+        })
+    # Pull leased suites from the live portfolio.
+    try:
+        from utils.buildings_inventory import get_all_buildings
+        for b in get_all_buildings():
+            for s in b["suites"]:
+                if s.get("tenant") and s.get("lease_end"):
+                    out.append({
+                        "name": s["tenant"],
+                        "building": b["name"],
+                        "suite": s.get("suite", ""),
+                        "start": _parse_date(s.get("lease_start")),
+                        "end": _parse_date(s.get("lease_end")),
+                        "source": "portfolio",
+                        "raw": None,
+                    })
+    except Exception:
+        pass
+    return out
+
+
+def _render_contracts(today):
+    st.markdown("##### Add a Client to the Calendar")
+    cc1, cc2 = st.columns(2)
+    with cc1:
+        name = st.text_input("Client / Tenant Name", key="ct_name")
+        building = st.selectbox("Building", [
+            "Miami Green", "Doral Office Plaza", "Waterford Centre", "4000 Ponce de Leon", "Other"
+        ], key="ct_building")
+        suite = st.text_input("Suite", key="ct_suite", placeholder="e.g. 305")
+    with cc2:
+        start = st.date_input("Lease Start", value=today, key="ct_start")
+        end = st.date_input(
+            "Lease End", value=today.replace(year=today.year + 5), key="ct_end")
+
+    if st.button("Add Client", type="primary", key="ct_add"):
+        if not name.strip():
+            st.error("Enter the client name.")
+        elif end <= start:
+            st.error("Lease End must be after Lease Start.")
+        else:
+            contracts = _get_contracts()
+            contracts.append({
+                "name": name.strip(), "building": building, "suite": suite.strip(),
+                "start": start.isoformat(), "end": end.isoformat(),
+            })
+            _save_contracts(contracts)
+            st.success("{} added until {}.".format(name.strip(), end.isoformat()))
+            st.rerun()
+
+    st.markdown("---")
+
+    all_c = _collect_contracts()
+    dated = [c for c in all_c if c["end"]]
+    if not all_c:
+        st.info("No client contracts yet. Add one above.")
+        return
+
+    # ── Tenure view: who's here, since when, for how long ──
+    st.markdown("##### Tenure &mdash; who is here and for how long")
+    for c in sorted(all_c, key=lambda x: (x["end"] or datetime.date.max)):
+        parts = []
+        if c["start"] and c["start"] <= today:
+            yrs = _years_between(c["start"], today)
+            parts.append("here for {:.1f} yr".format(yrs))
+        elif c["start"]:
+            parts.append("starts {}".format(c["start"].isoformat()))
+        if c["end"]:
+            left = _years_between(today, c["end"])
+            if left >= 0:
+                parts.append("{:.1f} yr left until end of contract".format(left))
+            else:
+                parts.append("expired {}".format(c["end"].isoformat()))
+        loc = c["building"] + ((" Suite " + c["suite"]) if c["suite"] else "")
+        tag = '<span class="badge badge-blue">client</span>' if c["source"] == "client" else '<span class="badge badge-green">portfolio</span>'
+        with st.container(border=True):
+            row1, row2 = st.columns([4, 1])
+            with row1:
+                st.markdown(
+                    '<div style="font-size:0.95rem;font-weight:700;color:var(--text-primary);">{name} {tag}</div>'
+                    '<div style="font-size:0.74rem;color:var(--text-tertiary);">{loc}</div>'
+                    '<div style="font-size:0.74rem;color:var(--accent);font-weight:600;">{info}</div>'.format(
+                        name=c["name"], tag=tag, loc=loc or "&mdash;",
+                        info=" &middot; ".join(parts) or "no dates"),
+                    unsafe_allow_html=True,
+                )
+            with row2:
+                if c["source"] == "client" and st.button("Remove", key="ct_rm_{}_{}".format(c["name"][:10], c["suite"])):
+                    contracts = _get_contracts()
+                    contracts = [x for x in contracts if not (
+                        x.get("name") == c["raw"].get("name") and x.get("suite") == c["raw"].get("suite")
+                        and x.get("end") == c["raw"].get("end"))]
+                    _save_contracts(contracts)
+                    st.rerun()
+
+    # ── Year-by-year timeline until every contract ends ──
+    if dated:
+        st.markdown("---")
+        st.markdown("##### Year-by-year contract calendar")
+        start_year = today.year
+        end_year = max(c["end"].year for c in dated)
+        for yr in range(start_year, end_year + 1):
+            year_end = datetime.date(yr, 12, 31)
+            active = [c for c in dated
+                      if c["end"].year >= yr and (not c["start"] or c["start"].year <= yr)]
+            if not active:
+                continue
+            lines = ""
+            for c in sorted(active, key=lambda x: x["end"]):
+                left = c["end"].year - yr
+                if c["end"].year == yr:
+                    note = "contract ends this year ({})".format(c["end"].isoformat())
+                else:
+                    note = "{} year{} left until end of contract".format(left, "" if left == 1 else "s")
+                loc = (" &middot; " + c["building"]) if c["building"] else ""
+                lines += (
+                    '<div style="font-size:0.78rem;color:var(--text-secondary);padding:0.15rem 0;">'
+                    '&bull; <b>{name}</b>{loc} &mdash; <span style="color:var(--accent);">{note}</span></div>'.format(
+                        name=c["name"], loc=loc, note=note)
+                )
+            st.markdown(
+                '<div class="card" style="padding:0.8rem 1.1rem;margin-bottom:0.6rem;">'
+                '<div style="font-size:0.95rem;font-weight:800;color:var(--text-primary);margin-bottom:0.3rem;">'
+                '{yr} <span style="font-size:0.7rem;font-weight:600;color:var(--text-muted);">({n} active)</span></div>'
+                '{lines}</div>'.format(yr=yr, n=len(active), lines=lines),
+                unsafe_allow_html=True,
+            )

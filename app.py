@@ -298,10 +298,10 @@ if st.session_state["app_mode"] == "home":
          "var(--accent-soft)", "var(--accent-border)",
          "Brand assets organized by category: logos, images, presentation decks, media, case studies and videos.",
          '<span class="badge badge-blue">6 Categories</span><span class="badge badge-green">Upload Files</span>'),
-        ("btn_sales", "sales", "&#x1F4C8;", "Sales Folder",
+        ("btn_sales", "sales", "&#x1F3AF;", "Objectif du Mois",
          "var(--green-soft)", "var(--green-border)",
-         "Sales reports organized by year from 2000 to 2030. Open a year and upload the related documents.",
-         '<span class="badge badge-blue">2000&ndash;2030</span><span class="badge badge-amber">Add Reports</span>'),
+         "Monthly sales targets per team member: goal vs. real production, to-do lists and full-team progress.",
+         '<span class="badge badge-blue">Per Person</span><span class="badge badge-green">Team View</span>'),
     ]
 
     for row_start in (0, 2, 4):
@@ -393,7 +393,7 @@ if st.session_state["app_mode"] == "home":
 # ── PROPERTY SEARCH MODE ──────────────────────────────────
 from utils.geocoding import geocode, reverse_geocode, fetch_property_records, fetch_pois, SAMPLE_ADDRESSES
 from utils.maps import render_map_2d, render_map_2d_widget, render_map_3d, map_links, COMP_COLORS, _distance_mi
-from utils.property_data import NB, match_neighborhood, lookup_parcel, lookup_buildings, format_currency, format_number, ALL_SUBMARKETS, random_address
+from utils.property_data import NB, match_neighborhood, lookup_parcel, lookup_buildings, format_currency, format_number, ALL_SUBMARKETS, random_address, search_by_owner
 from utils.scoring import compute_scores
 from utils.financials import compute_financials, sensitivity_table
 from utils.zoning import get_zone_info, estimate_buildable, zoning_summary_html, MIAMI21_ZONES
@@ -468,6 +468,14 @@ with st.sidebar:
         addr_input = sample
 
     st.markdown('<div style="height:1px;background:rgba(255,255,255,0.08);margin:0.6rem 0;"></div>', unsafe_allow_html=True)
+    st.markdown('<div style="color:#94a3b8;font-size:0.55rem;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:0.3rem;">Search by Owner Name</div>', unsafe_allow_html=True)
+    owner_q = st.text_input("Owner name", placeholder="e.g. INMOFIN 2002 SL", key="owner_input", label_visibility="collapsed")
+    if st.button("FIND OWNER PROPERTIES", use_container_width=True, key="btn_owner"):
+        if owner_q.strip():
+            st.session_state["owner_query"] = owner_q.strip()
+            st.rerun()
+
+    st.markdown('<div style="height:1px;background:rgba(255,255,255,0.08);margin:0.6rem 0;"></div>', unsafe_allow_html=True)
     st.markdown('<div style="color:#94a3b8;font-size:0.55rem;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:0.3rem;">Random by Submarket</div>', unsafe_allow_html=True)
     submarket_pick = st.selectbox("", [""] + ALL_SUBMARKETS, key="submarket_pick")
     if submarket_pick:
@@ -529,6 +537,75 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
+# ── Property Search: owner-name results ───────────────────
+if st.session_state.get("owner_query"):
+    oq = st.session_state["owner_query"]
+    results = search_by_owner(oq)
+    logo_tag = ""
+    if LOGO_B64:
+        logo_tag = '<img src="data:image/png;base64,{}" style="height:60px;">'.format(LOGO_B64)
+    st.markdown(
+        '<div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;">'
+        '{logo}'
+        '<div><h2 style="margin:0;color:var(--text-primary);">Owner Search</h2>'
+        '<div style="font-size:0.78rem;color:var(--text-muted);">"{q}" &mdash; {n} propert{s} found</div></div>'
+        '</div>'.format(logo=logo_tag, q=oq, n=len(results), s="y" if len(results) == 1 else "ies"),
+        unsafe_allow_html=True,
+    )
+    if st.button("Back / New search", key="owner_back"):
+        st.session_state.pop("owner_query", None)
+        st.rerun()
+
+    if not results:
+        st.markdown(
+            '<div class="card" style="text-align:center;padding:2rem;">'
+            '<div style="font-size:0.9rem;font-weight:600;color:var(--text-primary);">No properties found for that owner</div>'
+            '<div style="font-size:0.8rem;color:var(--text-tertiary);margin-top:0.3rem;">'
+            'Try part of the name (e.g. just the company word).</div></div>',
+            unsafe_allow_html=True,
+        )
+        st.stop()
+
+    # Group by owner so multiple matching owners stay readable.
+    owners = {}
+    for r in results:
+        owners.setdefault(r["owner"], []).append(r)
+    for owner_name, props in owners.items():
+        st.markdown(
+            '<div style="font-size:1rem;font-weight:800;color:var(--text-primary);margin:0.8rem 0 0.4rem;">'
+            '{owner} <span style="font-size:0.75rem;color:var(--text-muted);font-weight:600;">({n})</span></div>'.format(
+                owner=owner_name, n=len(props)),
+            unsafe_allow_html=True,
+        )
+        for i, r in enumerate(props):
+            with st.container(border=True):
+                cc1, cc2 = st.columns([3, 1])
+                with cc1:
+                    meta = []
+                    if r["land_use"]:
+                        meta.append(r["land_use"])
+                    if r["sale_price"]:
+                        meta.append("Sold {} for {}".format(r["sale_date"], format_currency(r["sale_price"])))
+                    if r["zoning"]:
+                        meta.append(r["zoning"])
+                    st.markdown(
+                        '<div style="font-size:0.92rem;font-weight:700;color:var(--text-primary);">{addr}</div>'
+                        '<div style="font-size:0.72rem;color:var(--text-muted);">{meta}</div>'
+                        '<div style="font-size:0.68rem;color:var(--text-tertiary);">Folio {folio}</div>'.format(
+                            addr=r["address"] or "Address N/A",
+                            meta=" &middot; ".join(meta), folio=r["folio"] or "N/A"),
+                        unsafe_allow_html=True,
+                    )
+                with cc2:
+                    if r["full_address"] and st.button(
+                        "Analyze", key="owner_an_{}_{}".format(owner_name[:12], i),
+                        use_container_width=True, type="primary"):
+                        st.session_state["_rand_addr"] = r["full_address"]
+                        st.session_state["_auto_analyze"] = True
+                        st.session_state.pop("owner_query", None)
+                        st.rerun()
+    st.stop()
+
 # ── Property Search: waiting for input ────────────────────
 if not st.session_state.searched:
     logo_tag = ""
@@ -543,9 +620,10 @@ if not st.session_state.searched:
         '</div>'.format(logo_tag),
         unsafe_allow_html=True,
     )
-    st.markdown('<div style="color:var(--text-secondary);font-size:0.8rem;font-weight:600;margin:0.4rem 0 0.5rem;">Pick a location on the map</div>', unsafe_allow_html=True)
-    pick_map = render_map_2d(25.7617, -80.1918, label="Miami-Dade County", comps=[], radius_miles=0, show_legend=False)
-    pick_click = st_folium(pick_map, width=None, height=460, returned_objects=["last_clicked"], key="welcome_pick_map")
+    st.markdown('<div style="color:var(--text-secondary);font-size:0.8rem;font-weight:600;margin:0.4rem 0 0.2rem;">Pick a location on the map</div>', unsafe_allow_html=True)
+    st.caption("Zoom in on the streets and buildings, then click the exact spot you want to analyze.")
+    pick_map = render_map_2d(25.7617, -80.1918, label="Miami-Dade County", comps=[], radius_miles=0, show_legend=False, zoom=12)
+    pick_click = st_folium(pick_map, width=None, height=520, returned_objects=["last_clicked"], key="welcome_pick_map")
     if pick_click and pick_click.get("last_clicked"):
         clk = pick_click["last_clicked"]
         with st.spinner("Resolving location..."):
@@ -619,8 +697,12 @@ with tabs[0]:
         kpi_items.append(kpi("YoY Growth", "+{}%".format(mkt.get("yoy", "N/A")), "Appreciation"))
         kpi_items.append(kpi("Days on Market", str(mkt.get("dom", "N/A")), "Average"))
     else:
-        kpi_items.append(kpi("Latitude", str(geo.get("lat", "N/A")), "Geocoded"))
-        kpi_items.append(kpi("Longitude", str(geo.get("lon", "N/A")), "Geocoded"))
+        loc_meta = []
+        if geo.get("city"):
+            loc_meta.append(geo["city"])
+        if geo.get("zip"):
+            loc_meta.append(geo["zip"])
+        kpi_items.append(kpi("Address", addr_display or "N/A", " ".join(loc_meta) or "Resolved"))
         kpi_items.append(kpi("Records Found", str(len(records)), "Open Data"))
         kpi_items.append(kpi("Confidence", "{}%".format(geo.get("confidence", 0)), "Geocoding"))
     st.markdown('<div class="kpi-grid">{}</div>'.format("".join(kpi_items)), unsafe_allow_html=True)

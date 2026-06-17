@@ -52,21 +52,44 @@ def render_brokers_page():
     # ── Tab 1: Brokers ──
     with tab1:
         if brokers:
-            # Search
-            search = st.text_input("Search brokers", placeholder="Name, organization, type...", key="brk_search")
+            import shared_db
+            meta = shared_db.get("broker_meta", {})
+            if not isinstance(meta, dict):
+                meta = {}
+
+            def _sector(b):
+                m = meta.get(b["name"], {})
+                if m.get("sector"):
+                    return m["sector"]
+                blob = (b.get("type", "") + " " + b.get("organization", "")).lower()
+                if "residential" in blob:
+                    return "Residential"
+                return "Commercial"
+
+            def _specialty(b):
+                return meta.get(b["name"], {}).get("specialty", "")
+
+            # Commercial / Residential separation at the top.
+            sector_filter = st.radio(
+                "Sector", ["All", "Commercial", "Residential"], horizontal=True, key="brk_sector")
+
+            search = st.text_input("Search brokers", placeholder="Name, organization, specialty...", key="brk_search")
 
             filtered = brokers
+            if sector_filter != "All":
+                filtered = [b for b in filtered if _sector(b) == sector_filter]
             if search:
                 q = search.lower()
-                filtered = [b for b in brokers if q in b["name"].lower() or q in b["organization"].lower() or q in b["type"].lower()]
+                filtered = [b for b in filtered
+                            if q in b["name"].lower() or q in b["organization"].lower()
+                            or q in b["type"].lower() or q in _specialty(b).lower()]
 
-            # Organization filter
             orgs = sorted(set(b["organization"] for b in filtered if b["organization"] and b["organization"] != "None"))
             org_filter = st.selectbox("Filter by organization", ["All"] + orgs, key="brk_org")
             if org_filter != "All":
                 filtered = [b for b in filtered if b["organization"] == org_filter]
 
-            st.markdown('<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:0.5rem;">{} brokers</div>'.format(len(filtered)), unsafe_allow_html=True)
+            st.markdown('<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:0.5rem;">{} brokers &mdash; edit Sector & Specialty inline, then Save.</div>'.format(len(filtered)), unsafe_allow_html=True)
 
             rows = []
             for b in filtered:
@@ -78,15 +101,36 @@ def render_brokers_page():
                     linkedin = lnk
                 rows.append({
                     "Name": b["name"],
+                    "Sector": _sector(b),
+                    "Specialty": _specialty(b),
                     "Organization": b["organization"],
-                    "Type": b["type"],
                     "Email": b["email"],
                     "Mobile": b["mobile"],
                     "Market": b["market"],
                     "LinkedIn": linkedin,
                 })
-            df = pd.DataFrame(rows)
-            st.dataframe(df.astype(str), use_container_width=True, hide_index=True)
+            df = pd.DataFrame(rows).astype(str)
+            edited = st.data_editor(
+                df, use_container_width=True, hide_index=True, key="brk_editor",
+                column_config={
+                    "Sector": st.column_config.SelectboxColumn(
+                        "Sector", options=["Commercial", "Residential", "Both"], required=True),
+                    "Specialty": st.column_config.TextColumn(
+                        "Specialty", help="e.g. Office sales Brickell, Residential Coconut Grove"),
+                    "Name": st.column_config.TextColumn("Name", disabled=True),
+                    "Organization": st.column_config.TextColumn("Organization", disabled=True),
+                    "Email": st.column_config.TextColumn("Email", disabled=True),
+                    "Mobile": st.column_config.TextColumn("Mobile", disabled=True),
+                    "Market": st.column_config.TextColumn("Market", disabled=True),
+                    "LinkedIn": st.column_config.TextColumn("LinkedIn", disabled=True),
+                },
+            )
+            if st.button("Save Sector & Specialty changes", key="brk_save", type="primary"):
+                for _, r in edited.iterrows():
+                    meta[r["Name"]] = {"sector": r["Sector"], "specialty": r["Specialty"]}
+                shared_db.put("broker_meta", meta)
+                st.success("Saved.")
+                st.rerun()
         else:
             st.info("No broker data found.")
 

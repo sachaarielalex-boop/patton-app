@@ -1,174 +1,284 @@
-"""Sales Folder page – sales reports organized by year (2000-2030). Files persist
-as base64 in shared_db so they survive Streamlit Cloud's read-only filesystem."""
+"""Objectif du Mois page – monthly sales targets per team member.
+
+Each person has a monthly objective (goal) and a real production figure, plus a
+personal to-do list. The team view aggregates every person's objective and real
+production and shows the overall completion percentage. Data persists in
+shared_db under the key "sales_objectives" so it is shared across users/devices.
+
+Store shape:
+    {
+      "month": "2026-06",
+      "people": [
+        {"name": "Sacha", "objective": 1000000, "production": 900000,
+         "done": False, "todos": [{"text": "...", "done": False}]},
+        ...
+      ]
+    }
+"""
 import streamlit as st
-import base64
 import datetime
 import shared_db
 
-_DB_KEY = "sales_files"
-YEARS = [str(y) for y in range(2000, 2031)]
+_DB_KEY = "sales_objectives"
 
 
 def _get_store():
-    return shared_db.get(_DB_KEY, {})
+    store = shared_db.get(_DB_KEY, {})
+    if not isinstance(store, dict):
+        store = {}
+    store.setdefault("people", [])
+    store.setdefault("month", datetime.date.today().strftime("%Y-%m"))
+    return store
 
 
 def _save_store(store):
     shared_db.put(_DB_KEY, store)
 
 
-def _add_files(year, uploaded_files):
-    store = _get_store()
-    bucket = store.get(year, [])
-    existing = {f["name"] for f in bucket}
-    added = 0
-    for uf in uploaded_files:
-        if uf.name in existing:
-            continue
-        data = uf.getvalue()
-        bucket.append({
-            "name": uf.name,
-            "mime": uf.type or "application/octet-stream",
-            "size": len(data),
-            "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "b64": base64.b64encode(data).decode("ascii"),
-        })
-        existing.add(uf.name)
-        added += 1
-    store[year] = bucket
-    _save_store(store)
-    return added
+def _fmt_money(n):
+    try:
+        n = float(n)
+    except (TypeError, ValueError):
+        return "$0"
+    if n >= 1_000_000:
+        return "${:.2f}M".format(n / 1_000_000)
+    if n >= 1_000:
+        return "${:.0f}K".format(n / 1_000)
+    return "${:.0f}".format(n)
 
 
-def _fmt_size(n):
-    for unit in ("B", "KB", "MB", "GB"):
-        if n < 1024:
-            return "{:.0f} {}".format(n, unit)
-        n /= 1024.0
-    return "{:.1f} TB".format(n)
+def _pct(production, objective):
+    try:
+        objective = float(objective)
+        if objective <= 0:
+            return 0
+        return max(0, min(100, round(float(production) / objective * 100)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _progress_bar(pct, done=False):
+    color = "var(--green)" if (done or pct >= 100) else "var(--accent)"
+    return (
+        '<div style="background:var(--bg-secondary);border-radius:99px;height:10px;overflow:hidden;margin:0.35rem 0;">'
+        '<div style="width:{pct}%;height:100%;background:{color};border-radius:99px;transition:width .4s;"></div>'
+        '</div>'.format(pct=pct, color=color)
+    )
 
 
 def render_sales_page():
     from utils.style import inject_css, LOGO_B64
     inject_css()
 
-    if st.sidebar.button("Back to Home", key="sales_back"):
+    if st.sidebar.button("Back to Home", key="obj_back"):
         st.session_state["app_mode"] = "home"
-        st.session_state.pop("sales_year", None)
+        st.session_state.pop("obj_person", None)
         st.rerun()
+
+    store = _get_store()
+
+    # ── Sidebar: add a person ───────────────────────────────
+    st.sidebar.markdown("### Team")
+    new_name = st.sidebar.text_input("Add a person", key="obj_new_name", placeholder="First name")
+    if st.sidebar.button("+ Add person", key="obj_add_person", use_container_width=True, type="primary"):
+        name = (new_name or "").strip()
+        if name and not any(p["name"].lower() == name.lower() for p in store["people"]):
+            store["people"].append({"name": name, "objective": 0, "production": 0, "done": False, "todos": []})
+            _save_store(store)
+            st.rerun()
+    if store["people"]:
+        st.sidebar.markdown("---")
+        for p in store["people"]:
+            if st.sidebar.button(p["name"], key="obj_side_" + p["name"], use_container_width=True):
+                st.session_state["obj_person"] = p["name"]
+                st.rerun()
 
     logo_tag = ""
     if LOGO_B64:
         logo_tag = '<img src="data:image/png;base64,{}" style="height:50px;">'.format(LOGO_B64)
+    month_label = _month_label(store["month"])
     st.markdown(
-        '<div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem;">'
+        '<div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.2rem;">'
         '{logo}'
-        '<div><h2 style="margin:0;color:var(--text-primary);">Sales Folder</h2>'
-        '<div style="font-size:0.75rem;color:var(--text-muted);">Sales reports organized by year</div></div>'
-        '</div>'.format(logo=logo_tag),
+        '<div><h2 style="margin:0;color:var(--text-primary);">Objectif du Mois</h2>'
+        '<div style="font-size:0.75rem;color:var(--text-muted);">Monthly targets &amp; real production &mdash; {month}</div></div>'
+        '</div>'.format(logo=logo_tag, month=month_label),
         unsafe_allow_html=True,
     )
 
-    year = st.session_state.get("sales_year")
-    if year and year in YEARS:
-        _render_year(year)
+    person = st.session_state.get("obj_person")
+    if person and any(p["name"] == person for p in store["people"]):
+        _render_person(store, person)
     else:
-        _render_landing()
+        st.session_state.pop("obj_person", None)
+        _render_team(store)
 
 
-def _render_landing():
-    store = _get_store()
-    total = sum(len(v) for v in store.values())
-    years_with = sum(1 for y in YEARS if store.get(y))
+def _month_label(ym):
+    try:
+        return datetime.datetime.strptime(ym, "%Y-%m").strftime("%B %Y")
+    except Exception:
+        return ym
+
+
+def _render_team(store):
+    people = store["people"]
+    total_obj = sum(float(p.get("objective", 0) or 0) for p in people)
+    total_prod = sum(float(p.get("production", 0) or 0) for p in people)
+    team_pct = _pct(total_prod, total_obj)
+    done_count = sum(1 for p in people if p.get("done"))
+
+    # ── Team global view ────────────────────────────────────
     st.markdown(
-        '<div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.5rem;">'
-        '<div class="kpi-card"><div class="kl">Report Years</div><div class="kv">{}&ndash;{}</div></div>'
-        '<div class="kpi-card"><div class="kl">Years with Reports</div><div class="kv">{}</div></div>'
-        '<div class="kpi-card"><div class="kl">Total Reports</div><div class="kv">{}</div></div>'
-        '</div>'.format(YEARS[0], YEARS[-1], years_with, total),
+        '<div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">'
+        '<div class="kpi-card"><div class="kl">Team Members</div><div class="kv">{n}</div></div>'
+        '<div class="kpi-card"><div class="kl">Team Objective</div><div class="kv">{obj}</div></div>'
+        '<div class="kpi-card"><div class="kl">Real Production</div><div class="kv">{prod}</div></div>'
+        '<div class="kpi-card"><div class="kl">Goals Reached</div><div class="kv">{done}/{n}</div></div>'
+        '</div>'.format(n=len(people), obj=_fmt_money(total_obj), prod=_fmt_money(total_prod), done=done_count),
         unsafe_allow_html=True,
     )
 
-    st.markdown("##### Select a report year")
-    # Newest first, 5 per row
-    ordered = list(reversed(YEARS))
-    per_row = 5
-    for r in range(0, len(ordered), per_row):
-        cols = st.columns(per_row, gap="small")
-        for ci, y in enumerate(ordered[r:r + per_row]):
-            count = len(store.get(y, []))
-            with cols[ci]:
-                with st.container(border=True):
-                    badge = '<span class="badge badge-green">{} docs</span>'.format(count) if count else '<span class="badge" style="background:var(--bg-secondary);color:var(--text-muted);">empty</span>'
-                    st.markdown(
-                        '<div class="qa-inner">'
-                        '<div style="font-size:1.15rem;font-weight:800;color:var(--text-primary);">{}</div>'
-                        '<div style="margin-top:0.25rem;">{}</div>'
-                        '</div>'.format(y, badge),
-                        unsafe_allow_html=True,
-                    )
-                    if st.button("Open", use_container_width=True, key="sales_open_" + y):
-                        st.session_state["sales_year"] = y
-                        st.rerun()
-
-
-def _render_year(year):
-    if st.button("Back to Sales", key="sales_year_back"):
-        st.session_state.pop("sales_year", None)
-        st.rerun()
-
-    st.markdown("### {} Sales Reports".format(year))
-
-    uploaded = st.file_uploader(
-        "Add documents to {}".format(year),
-        accept_multiple_files=True,
-        key="sales_upload_" + year,
+    st.markdown(
+        '<div class="card" style="padding:1.2rem 1.4rem;margin-bottom:1.4rem;">'
+        '<div style="display:flex;justify-content:space-between;align-items:baseline;">'
+        '<div style="font-weight:800;color:var(--text-primary);">Team Progress</div>'
+        '<div style="font-weight:900;font-size:1.4rem;color:{c};">{pct}%</div></div>'
+        '{bar}'
+        '<div style="font-size:0.78rem;color:var(--text-muted);">{prod} of {obj} target reached</div>'
+        '</div>'.format(
+            c="var(--green)" if team_pct >= 100 else "var(--accent)",
+            pct=team_pct, bar=_progress_bar(team_pct, team_pct >= 100),
+            prod=_fmt_money(total_prod), obj=_fmt_money(total_obj),
+        ),
+        unsafe_allow_html=True,
     )
-    if uploaded and st.button("Upload {} file(s)".format(len(uploaded)), key="sales_do_upload_" + year, type="primary"):
-        added = _add_files(year, uploaded)
-        st.success("Added {} file(s) to {}.".format(added, year))
-        st.rerun()
 
-    st.markdown("---")
-
-    store = _get_store()
-    files = store.get(year, [])
-    if not files:
+    if not people:
         st.markdown(
             '<div class="card" style="text-align:center;padding:2.5rem;">'
-            '<div style="font-size:2rem;margin-bottom:0.8rem;">&#128202;</div>'
-            '<div style="font-size:0.9rem;font-weight:600;color:var(--text-primary);">No reports for {}</div>'
-            '<div style="font-size:0.8rem;color:var(--text-tertiary);margin-top:0.3rem;">Upload your first {} report above.</div>'
-            '</div>'.format(year, year),
+            '<div style="font-size:2rem;margin-bottom:0.8rem;">&#128101;</div>'
+            '<div style="font-size:0.9rem;font-weight:600;color:var(--text-primary);">No team members yet</div>'
+            '<div style="font-size:0.8rem;color:var(--text-tertiary);margin-top:0.3rem;">'
+            'Use &ldquo;Add a person&rdquo; in the left sidebar to get started.</div>'
+            '</div>',
             unsafe_allow_html=True,
         )
         return
 
-    st.markdown("##### {} documents".format(len(files)))
-    for i, f in enumerate(files):
-        try:
-            data = base64.b64decode(f["b64"])
-        except Exception:
-            data = b""
-        with st.container(border=True):
-            c1, c2, c3 = st.columns([3, 1, 1])
-            with c1:
-                st.markdown(
-                    '<div style="font-size:0.88rem;font-weight:700;color:var(--text-primary);">{}</div>'
-                    '<div style="font-size:0.7rem;color:var(--text-muted);">{} | {}</div>'.format(
-                        f["name"], _fmt_size(f["size"]), f["date"]
-                    ),
-                    unsafe_allow_html=True,
-                )
-            with c2:
-                if data:
-                    st.download_button(
-                        "Download", data, f["name"], f.get("mime", "application/octet-stream"),
-                        key="sales_dl_{}_{}".format(year, i), use_container_width=True,
+    st.markdown("##### Team members")
+    for i in range(0, len(people), 2):
+        cols = st.columns(2, gap="large")
+        for ci, p in enumerate(people[i:i + 2]):
+            pct = _pct(p.get("production", 0), p.get("objective", 0))
+            with cols[ci]:
+                with st.container(border=True):
+                    check = "&#9989; " if p.get("done") else ""
+                    st.markdown(
+                        '<div style="padding:0.2rem 0.3rem;">'
+                        '<div style="display:flex;justify-content:space-between;align-items:baseline;">'
+                        '<div style="font-size:1.05rem;font-weight:800;color:var(--text-primary);">{check}{name}</div>'
+                        '<div style="font-weight:900;color:{c};">{pct}%</div></div>'
+                        '{bar}'
+                        '<div style="font-size:0.76rem;color:var(--text-muted);">'
+                        'Goal {obj} &middot; Real {prod}</div>'
+                        '</div>'.format(
+                            check=check, name=p["name"],
+                            c="var(--green)" if p.get("done") or pct >= 100 else "var(--accent)",
+                            pct=pct, bar=_progress_bar(pct, p.get("done")),
+                            obj=_fmt_money(p.get("objective", 0)), prod=_fmt_money(p.get("production", 0)),
+                        ),
+                        unsafe_allow_html=True,
                     )
-            with c3:
-                if st.button("Remove", key="sales_rm_{}_{}".format(year, i), use_container_width=True):
-                    files.pop(i)
-                    store[year] = files
-                    _save_store(store)
-                    st.rerun()
+                    if st.button("Open " + p["name"], key="obj_open_" + p["name"], use_container_width=True, type="primary"):
+                        st.session_state["obj_person"] = p["name"]
+                        st.rerun()
+
+
+def _render_person(store, name):
+    people = store["people"]
+    idx = next(i for i, p in enumerate(people) if p["name"] == name)
+    p = people[idx]
+
+    if st.button("Back to Team", key="obj_person_back"):
+        st.session_state.pop("obj_person", None)
+        st.rerun()
+
+    st.markdown("### {} &mdash; To-Do & Targets".format(name))
+
+    # ── Objective / production inputs ───────────────────────
+    c1, c2 = st.columns(2)
+    with c1:
+        objective = st.number_input(
+            "Objective ($)", min_value=0, step=50000,
+            value=int(float(p.get("objective", 0) or 0)), key="obj_obj_" + name,
+        )
+    with c2:
+        production = st.number_input(
+            "Real production ($)", min_value=0, step=50000,
+            value=int(float(p.get("production", 0) or 0)), key="obj_prod_" + name,
+        )
+
+    pct = _pct(production, objective)
+    st.markdown(
+        '<div class="card" style="padding:1rem 1.3rem;margin:0.6rem 0 1rem;">'
+        '<div style="display:flex;justify-content:space-between;align-items:baseline;">'
+        '<div style="font-weight:800;color:var(--text-primary);">Progress</div>'
+        '<div style="font-weight:900;font-size:1.3rem;color:{c};">{pct}%</div></div>'
+        '{bar}'
+        '<div style="font-size:0.78rem;color:var(--text-muted);">{prod} of {obj}</div>'
+        '</div>'.format(
+            c="var(--green)" if pct >= 100 else "var(--accent)", pct=pct,
+            bar=_progress_bar(pct, p.get("done")), prod=_fmt_money(production), obj=_fmt_money(objective),
+        ),
+        unsafe_allow_html=True,
+    )
+
+    done = st.checkbox("Objective reached / completed", value=bool(p.get("done")), key="obj_done_" + name)
+
+    if st.button("Save targets", key="obj_save_" + name, type="primary"):
+        p["objective"] = objective
+        p["production"] = production
+        p["done"] = done
+        _save_store(store)
+        st.success("Saved.")
+        st.rerun()
+
+    st.markdown("---")
+
+    # ── To-do list ──────────────────────────────────────────
+    st.markdown("##### {}'s to-do list".format(name))
+    todos = p.get("todos", [])
+    for ti, todo in enumerate(todos):
+        tc1, tc2 = st.columns([0.9, 0.1])
+        with tc1:
+            checked = st.checkbox(
+                todo.get("text", ""), value=bool(todo.get("done")),
+                key="obj_todo_{}_{}".format(name, ti),
+            )
+            if checked != bool(todo.get("done")):
+                todo["done"] = checked
+                _save_store(store)
+                st.rerun()
+        with tc2:
+            if st.button("X", key="obj_todo_rm_{}_{}".format(name, ti)):
+                todos.pop(ti)
+                p["todos"] = todos
+                _save_store(store)
+                st.rerun()
+
+    new_todo = st.text_input("Add a task", key="obj_new_todo_" + name, placeholder="e.g. Close Brickell deal")
+    if st.button("+ Add task", key="obj_add_todo_" + name):
+        txt = (new_todo or "").strip()
+        if txt:
+            todos.append({"text": txt, "done": False})
+            p["todos"] = todos
+            _save_store(store)
+            st.rerun()
+
+    st.markdown("---")
+    if st.button("Remove " + name + " from team", key="obj_rmperson_" + name):
+        people.pop(idx)
+        _save_store(store)
+        st.session_state.pop("obj_person", None)
+        st.rerun()
