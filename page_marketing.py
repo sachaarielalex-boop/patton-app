@@ -12,7 +12,7 @@ _DB_KEY = "marketing_files"
 _ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
 
 # Categories that ship with bundled default files from the repo (assets/<subdir>/).
-_DEFAULT_DIRS = {"logos": "logos"}
+_DEFAULT_DIRS = {"logos": "logos", "decks": "decks"}
 
 # (key, icon, label, description)
 CATEGORIES = [

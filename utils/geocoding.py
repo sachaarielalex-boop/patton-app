@@ -1,11 +1,57 @@
 import streamlit as st
 import requests
+import math
 
 GEO_URL = "https://nominatim.openstreetmap.org/search"
 REVERSE_URL = "https://nominatim.openstreetmap.org/reverse"
 
+
+def _local_lookup(addr):
+    """Resolve an address against the bundled 1,776-parcel database.
+
+    Streamlit Cloud's shared IPs are frequently rate-limited/blocked by Nominatim,
+    so the local parcel database (which already carries Latitude/Longitude) is the
+    most reliable source. Returns a geo dict or None.
+    """
+    try:
+        from parcels_data import ADDR_DATA
+    except Exception:
+        return None
+    clean = (addr or "").upper().split(",")[0].strip()
+    if not clean:
+        return None
+    parcel = ADDR_DATA.get(clean)
+    if parcel is None:
+        for k, v in ADDR_DATA.items():
+            if clean in k or k in clean:
+                parcel = v
+                break
+    if parcel is None:
+        return None
+    try:
+        lat = float(parcel.get("Latitude"))
+        lon = float(parcel.get("Longitude"))
+    except (TypeError, ValueError):
+        return None
+    return {
+        "lat": lat, "lon": lon,
+        "display": parcel.get("Address", addr),
+        "city": parcel.get("City", "Miami"),
+        "county": "Miami-Dade County",
+        "state": parcel.get("State", "Florida"),
+        "zip": "",
+        "confidence": 95,
+        "source": "Parcel database",
+    }
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def geocode(addr):
+    # Local parcel database first (reliable on Streamlit Cloud).
+    local = _local_lookup(addr)
+    if local:
+        return local
+
     result = {"lat": None, "lon": None, "display": "", "city": "", "county": "", "state": "",
               "zip": "", "confidence": 0, "source": "Nominatim/OSM"}
     try:
@@ -28,9 +74,46 @@ def geocode(addr):
         pass
     return result
 
+
+def _nearest_parcel(lat, lon):
+    """Return (address, distance_miles) of the closest parcel, or (None, None)."""
+    try:
+        from parcels_data import ADDR_DATA
+    except Exception:
+        return None, None
+    best_addr, best_d = None, None
+    for v in ADDR_DATA.values():
+        try:
+            plat = float(v.get("Latitude"))
+            plon = float(v.get("Longitude"))
+        except (TypeError, ValueError):
+            continue
+        dlat = math.radians(plat - lat)
+        dlon = math.radians(plon - lon)
+        a = (math.sin(dlat / 2) ** 2
+             + math.cos(math.radians(lat)) * math.cos(math.radians(plat)) * math.sin(dlon / 2) ** 2)
+        d = 3959 * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+        if best_d is None or d < best_d:
+            best_d = d
+            city = v.get("City", "Miami")
+            state = v.get("State", "FL")
+            addr = v.get("Address", "")
+            best_addr = "{}, {}, {}".format(addr, city, state) if addr else None
+    return best_addr, best_d
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def reverse_geocode(lat, lon):
-    """Resolve a clicked map point to a street address (best-effort)."""
+    """Resolve a clicked map point to a street address (best-effort).
+
+    Tries the nearest known parcel first (works offline / on Cloud), then Nominatim,
+    and only falls back to raw coordinates if nothing resolves.
+    """
+    # Nearest parcel within ~0.3 mi is treated as a confident match.
+    addr, dist = _nearest_parcel(lat, lon)
+    if addr and dist is not None and dist <= 0.3:
+        return addr
+
     try:
         r = requests.get(REVERSE_URL, params={
             "lat": lat, "lon": lon, "format": "json", "addressdetails": 1, "zoom": 18
@@ -43,9 +126,16 @@ def reverse_geocode(lat, lon):
         street = (house + " " + road).strip() if road else ""
         if street:
             return (street + ", " + city + ", FL").strip(", ")
-        return d.get("display_name", "{:.5f}, {:.5f}".format(lat, lon))
+        disp = d.get("display_name", "")
+        if disp:
+            return disp
     except Exception:
-        return "{:.5f}, {:.5f}".format(lat, lon)
+        pass
+
+    # Fall back to the nearest parcel even if a little further out.
+    if addr:
+        return addr
+    return "{:.5f}, {:.5f}".format(lat, lon)
 
 
 MIAMI_DADE_URL = "https://opendata.miamidade.gov/resource/k9zy-wfpd.json"
