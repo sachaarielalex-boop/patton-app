@@ -10,49 +10,6 @@ PROJECTS = [
         "status": "In Development",
         "description": "Modern residential development in Miami's fast-growing Allapattah neighborhood.",
     },
-    {
-        "name": "Miami Green",
-        "location": "3150 SW 38th Ave, Miami, FL 33146",
-        "type": "Office",
-        "status": "Active",
-        "description": "Class B+ office tower in the Coral Gables / Coconut Grove corridor with Metrorail access.",
-        "website": "miamigreenoffice.com",
-    },
-    {
-        "name": "Coral Way Gardens",
-        "location": "Coral Way, Miami, FL",
-        "type": "Mixed-Use Development",
-        "status": "In Development",
-        "description": "Mixed-use development project along the vibrant Coral Way corridor.",
-    },
-    {
-        "name": "Melrose Place",
-        "location": "Miami, FL",
-        "type": "Residential Development",
-        "status": "In Development",
-        "description": "Boutique residential project with comprehensive branding and modern design.",
-    },
-    {
-        "name": "Emerald Place",
-        "location": "Miami, FL",
-        "type": "Residential Development",
-        "status": "In Development",
-        "description": "Branded residential development project in the Miami market.",
-    },
-    {
-        "name": "Keystone Bay",
-        "location": "Miami, FL",
-        "type": "Waterfront Development",
-        "status": "In Development",
-        "description": "Waterfront-oriented development with premium bay views.",
-    },
-    {
-        "name": "Keystone Towers",
-        "location": "Miami, FL",
-        "type": "High-Rise Development",
-        "status": "In Development",
-        "description": "High-rise tower development with dedicated project branding.",
-    },
 ]
 
 STATUS_COLORS = {
