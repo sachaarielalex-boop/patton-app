@@ -149,7 +149,6 @@ def _month_label(ym):
 
 
 def _render_team(store):
-    import pandas as pd
     people = store["people"]
 
     total_obj = sum(_num(p.get("objective")) for p in people)
@@ -207,16 +206,41 @@ def _render_team(store):
         )
         return
 
-    # ── Objective vs Production chart ───────────────────────
+    # ── Objective vs Production chart (custom HTML bars) ────
     st.markdown("##### Objective vs. Real Production")
-    chart_df = pd.DataFrame(
-        {
-            "Objective": [_num(p.get("objective")) for p in people],
-            "Production": [_num(p.get("production")) for p in people],
-        },
-        index=[p["name"] for p in people],
+    scale = max([_num(p.get("objective")) for p in people] +
+                [_num(p.get("production")) for p in people] + [1])
+    rows_html = []
+    for p in people:
+        obj = _num(p.get("objective"))
+        prod = _num(p.get("production"))
+        ow = max(2, round(obj / scale * 100))
+        pw = max(2, round(prod / scale * 100)) if prod else 0
+        pcolor = "var(--green)" if (p.get("done") or (obj > 0 and prod >= obj)) else "var(--accent)"
+        rows_html.append(
+            '<div style="margin-bottom:1rem;">'
+            '<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:0.3rem;">'
+            '<span style="font-weight:700;color:var(--text-primary);">{name}</span>'
+            '<span style="color:var(--text-muted);">{prodm} / {objm}</span></div>'
+            # objective track
+            '<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem;">'
+            '<span style="width:74px;font-size:0.62rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">Objective</span>'
+            '<div style="flex:1;background:var(--bg-secondary);border-radius:99px;height:14px;overflow:hidden;">'
+            '<div style="width:{ow}%;height:100%;background:#94a3b8;border-radius:99px;"></div></div></div>'
+            # production track
+            '<div style="display:flex;align-items:center;gap:0.5rem;">'
+            '<span style="width:74px;font-size:0.62rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">Production</span>'
+            '<div style="flex:1;background:var(--bg-secondary);border-radius:99px;height:14px;overflow:hidden;">'
+            '<div style="width:{pw}%;height:100%;background:{pcolor};border-radius:99px;transition:width .4s;"></div></div></div>'
+            '</div>'.format(
+                name=p["name"], prodm=_fmt_money(prod), objm=_fmt_money(obj),
+                ow=ow, pw=pw, pcolor=pcolor,
+            )
+        )
+    st.markdown(
+        '<div class="card" style="padding:1.3rem 1.4rem;margin-bottom:1.4rem;">' + "".join(rows_html) + '</div>',
+        unsafe_allow_html=True,
     )
-    st.bar_chart(chart_df, height=260, color=["#94a3b8", "#2563eb"])
 
     # ── Leaderboard (ranked by attainment) ──────────────────
     st.markdown("##### Leaderboard")
