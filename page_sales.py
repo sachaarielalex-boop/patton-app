@@ -101,7 +101,7 @@ def render_sales_page():
     st.sidebar.markdown("### Team")
     new_name = st.sidebar.text_input("Add a person", key="obj_new_name", placeholder="First name")
     new_obj = st.sidebar.number_input(
-        "Their objective ($)", min_value=0, step=50000, value=0, key="obj_new_obj")
+        "Their monthly goal ($)", min_value=0, step=50000, value=0, key="obj_new_obj")
     if st.sidebar.button("+ Add member", key="obj_add_person", use_container_width=True, type="primary"):
         name = (new_name or "").strip()
         if name and not any(p["name"].lower() == name.lower() for p in store["people"]):
@@ -127,7 +127,7 @@ def render_sales_page():
     st.markdown(
         '<div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.2rem;">'
         '{logo}'
-        '<div><h2 style="margin:0;color:var(--text-primary);">Objective of the Month</h2>'
+        '<div><h2 style="margin:0;color:var(--text-primary);">Monthly Goal</h2>'
         '<div style="font-size:0.75rem;color:var(--text-muted);">Team sales performance tracker &mdash; {month}</div></div>'
         '</div>'.format(logo=logo_tag, month=month_label),
         unsafe_allow_html=True,
@@ -163,7 +163,7 @@ def _render_team(store):
     st.markdown(
         '<div style="display:flex;gap:0.8rem;flex-wrap:wrap;margin-bottom:1rem;">'
         '<div class="kpi-card"><div class="kl">Members</div><div class="kv">{n}</div></div>'
-        '<div class="kpi-card"><div class="kl">Team Objective</div><div class="kv">{obj}</div></div>'
+        '<div class="kpi-card"><div class="kl">Team Goal</div><div class="kv">{obj}</div></div>'
         '<div class="kpi-card"><div class="kl">Real Production</div><div class="kv">{prod}</div></div>'
         '<div class="kpi-card"><div class="kl">Attainment</div><div class="kv">{pct}%</div></div>'
         '<div class="kpi-card"><div class="kl">Gap to Goal</div><div class="kv">{gap}</div></div>'
@@ -308,7 +308,7 @@ def _render_person(store, name):
     c1, c2 = st.columns(2)
     with c1:
         objective = st.number_input(
-            "Objective ($)", min_value=0, step=50000,
+            "Monthly Goal ($)", min_value=0, step=50000,
             value=int(_num(p.get("objective"))), key="obj_obj_" + name)
         deals = st.number_input(
             "Deals closed", min_value=0, step=1,
@@ -344,7 +344,7 @@ def _render_person(store, name):
         unsafe_allow_html=True,
     )
 
-    done = st.checkbox("Objective reached / completed", value=bool(p.get("done")), key="obj_done_" + name)
+    done = st.checkbox("Goal reached / completed", value=bool(p.get("done")), key="obj_done_" + name)
 
     if st.button("Save performance", key="obj_save_" + name, type="primary"):
         p["objective"] = objective

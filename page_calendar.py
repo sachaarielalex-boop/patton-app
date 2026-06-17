@@ -31,8 +31,8 @@ def _years_between(d1, d2):
     return (d2 - d1).days / 365.25
 
 
-def _month_calendar_html(visits, today, year, month):
-    """Render a month grid with visit markers coloured by status."""
+def _month_calendar_html(visits, today, year, month, lease_events=None):
+    """Render a month grid with visit markers + lease start/end events."""
     by_day = {}
     for v in visits:
         try:
@@ -41,6 +41,12 @@ def _month_calendar_html(visits, today, year, month):
             continue
         if d.year == year and d.month == month:
             by_day.setdefault(d.day, []).append(v)
+
+    lease_by_day = {}
+    for ev in (lease_events or []):
+        d = ev.get("date")
+        if d and d.year == year and d.month == month:
+            lease_by_day.setdefault(d.day, []).append(ev)
 
     head = "".join(
         '<div style="text-align:center;font-size:0.62rem;font-weight:700;letter-spacing:0.5px;'
@@ -76,9 +82,23 @@ def _month_calendar_html(visits, today, year, month):
             if len(dv) > 2:
                 chips += ('<div style="font-size:0.58rem;color:var(--text-muted);">+{} more</div>'
                           .format(len(dv) - 2))
+            lv = lease_by_day.get(day, [])
+            for ev in lv[:2]:
+                ec = "var(--green)" if ev.get("kind") == "start" else "var(--red)"
+                tag = "start" if ev.get("kind") == "start" else "end"
+                chips += (
+                    '<div style="display:flex;align-items:center;gap:3px;font-size:0.58rem;'
+                    'color:var(--text-tertiary);line-height:1.3;white-space:nowrap;overflow:hidden;'
+                    'text-overflow:ellipsis;">'
+                    '<span style="flex:0 0 5px;width:5px;height:5px;border-radius:2px;background:{c};"></span>'
+                    '<span style="overflow:hidden;text-overflow:ellipsis;">{t} ({k})</span></div>'
+                ).format(c=ec, t=ev.get("tenant", "")[:8], k=tag)
+            if len(lv) > 2:
+                chips += ('<div style="font-size:0.58rem;color:var(--text-muted);">+{} lease</div>'
+                          .format(len(lv) - 2))
             daynum_col = "#fff" if is_today else "var(--text-secondary)"
             daynum_bg = "background:var(--accent);" if is_today else ""
-            cell_border = "border:1px solid var(--accent);" if dv else "border:1px solid var(--border);"
+            cell_border = "border:1px solid var(--accent);" if (dv or lv) else "border:1px solid var(--border);"
             cells += (
                 '<div style="min-height:74px;border-radius:8px;{cb}background:var(--bg-card);'
                 'padding:0.3rem;overflow:hidden;">'
@@ -218,12 +238,21 @@ def render_calendar_page():
                 unsafe_allow_html=True,
             )
 
-        st.markdown(_month_calendar_html(visits, today, vy, vm), unsafe_allow_html=True)
+        lease_events = []
+        for c in _collect_contracts():
+            if c.get("start"):
+                lease_events.append({"date": c["start"], "tenant": c["name"], "kind": "start"})
+            if c.get("end"):
+                lease_events.append({"date": c["end"], "tenant": c["name"], "kind": "end"})
+
+        st.markdown(_month_calendar_html(visits, today, vy, vm, lease_events), unsafe_allow_html=True)
         st.markdown(
-            '<div style="display:flex;gap:1rem;font-size:0.66rem;color:var(--text-tertiary);margin:0.6rem 0 0.4rem;">'
+            '<div style="display:flex;gap:1rem;flex-wrap:wrap;font-size:0.66rem;color:var(--text-tertiary);margin:0.6rem 0 0.4rem;">'
             '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-right:4px;"></span>Scheduled</span>'
             '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--amber);margin-right:4px;"></span>Past due</span>'
             '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);margin-right:4px;"></span>Completed</span>'
+            '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--green);margin-right:4px;"></span>Lease start</span>'
+            '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--red);margin-right:4px;"></span>Lease end</span>'
             '</div>',
             unsafe_allow_html=True,
         )
@@ -467,35 +496,36 @@ def _render_contracts(today):
                     _save_contracts(contracts)
                     st.rerun()
 
-    # ── Year-by-year timeline until every contract ends ──
+    # ── Lease expirations by year (pie chart) ──
     if dated:
         st.markdown("---")
-        st.markdown("##### Year-by-year contract calendar")
-        start_year = today.year
-        end_year = max(c["end"].year for c in dated)
-        for yr in range(start_year, end_year + 1):
-            year_end = datetime.date(yr, 12, 31)
-            active = [c for c in dated
-                      if c["end"].year >= yr and (not c["start"] or c["start"].year <= yr)]
-            if not active:
-                continue
-            lines = ""
-            for c in sorted(active, key=lambda x: x["end"]):
-                left = c["end"].year - yr
-                if c["end"].year == yr:
-                    note = "contract ends this year ({})".format(c["end"].isoformat())
-                else:
-                    note = "{} year{} left until end of contract".format(left, "" if left == 1 else "s")
-                loc = (" &middot; " + c["building"]) if c["building"] else ""
-                lines += (
-                    '<div style="font-size:0.78rem;color:var(--text-secondary);padding:0.15rem 0;">'
-                    '&bull; <b>{name}</b>{loc} &mdash; <span style="color:var(--accent);">{note}</span></div>'.format(
-                        name=c["name"], loc=loc, note=note)
-                )
-            st.markdown(
-                '<div class="card" style="padding:0.8rem 1.1rem;margin-bottom:0.6rem;">'
-                '<div style="font-size:0.95rem;font-weight:800;color:var(--text-primary);margin-bottom:0.3rem;">'
-                '{yr} <span style="font-size:0.7rem;font-weight:600;color:var(--text-muted);">({n} active)</span></div>'
-                '{lines}</div>'.format(yr=yr, n=len(active), lines=lines),
-                unsafe_allow_html=True,
-            )
+        st.markdown("##### Lease expirations by year")
+        from collections import Counter
+        import plotly.graph_objects as go
+
+        counts = Counter(c["end"].year for c in dated)
+        years = sorted(counts)
+        labels = [str(y) for y in years]
+        values = [counts[y] for y in years]
+        # Highlight the soonest expirations with warmer colors.
+        palette = ["#dc2626", "#ea580c", "#d97706", "#ca8a04", "#16a34a",
+                   "#0d9488", "#2563eb", "#7c3aed", "#9333ea", "#64748b"]
+        colors = [palette[i % len(palette)] for i in range(len(years))]
+
+        fig = go.Figure(data=[go.Pie(
+            labels=labels, values=values, hole=0.5,
+            marker=dict(colors=colors, line=dict(color="rgba(0,0,0,0)", width=0)),
+            textinfo="label+value", textfont=dict(size=13),
+            hovertemplate="%{label}: %{value} lease(s) ending<extra></extra>",
+            sort=False,
+        )])
+        fig.update_layout(
+            height=320, margin=dict(t=10, b=10, l=10, r=10),
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#94a3b8"),
+            legend=dict(orientation="h", yanchor="bottom", y=-0.15),
+            annotations=[dict(text="{}<br>leases".format(len(dated)), x=0.5, y=0.5,
+                              font=dict(size=16, color="#94a3b8"), showarrow=False)],
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption("Each slice = number of leases ending that year. Click a member in the Tenure list above for details.")
