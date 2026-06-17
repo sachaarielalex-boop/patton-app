@@ -298,7 +298,7 @@ if st.session_state["app_mode"] == "home":
          "var(--accent-soft)", "var(--accent-border)",
          "Brand assets organized by category: logos, images, presentation decks, media, case studies and videos.",
          '<span class="badge badge-blue">6 Categories</span><span class="badge badge-green">Upload Files</span>'),
-        ("btn_sales", "sales", "&#x1F3AF;", "Objectif du Mois",
+        ("btn_sales", "sales", "&#x1F3AF;", "Objective of the Month",
          "var(--green-soft)", "var(--green-border)",
          "Monthly sales targets per team member: goal vs. real production, to-do lists and full-team progress.",
          '<span class="badge badge-blue">Per Person</span><span class="badge badge-green">Team View</span>'),

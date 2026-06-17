@@ -1,4 +1,4 @@
-"""Objectif du Mois page – monthly sales targets per team member.
+"""Objective of the Month page – monthly sales targets per team member.
 
 Each person has a monthly objective (goal) and a real production figure, plus a
 personal to-do list. The team view aggregates every person's objective and real
@@ -77,14 +77,17 @@ def render_sales_page():
 
     store = _get_store()
 
-    # ── Sidebar: add a person ───────────────────────────────
+    # ── Sidebar: add a person (with objective) ──────────────
     st.sidebar.markdown("### Team")
     new_name = st.sidebar.text_input("Add a person", key="obj_new_name", placeholder="First name")
+    new_obj = st.sidebar.number_input(
+        "Their objective ($)", min_value=0, step=50000, value=0, key="obj_new_obj")
     if st.sidebar.button("+ Add person", key="obj_add_person", use_container_width=True, type="primary"):
         name = (new_name or "").strip()
         if name and not any(p["name"].lower() == name.lower() for p in store["people"]):
-            store["people"].append({"name": name, "objective": 0, "production": 0, "done": False, "todos": []})
+            store["people"].append({"name": name, "objective": int(new_obj), "production": 0, "done": False, "todos": []})
             _save_store(store)
+            st.session_state["obj_person"] = name
             st.rerun()
     if store["people"]:
         st.sidebar.markdown("---")
@@ -100,7 +103,7 @@ def render_sales_page():
     st.markdown(
         '<div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.2rem;">'
         '{logo}'
-        '<div><h2 style="margin:0;color:var(--text-primary);">Objectif du Mois</h2>'
+        '<div><h2 style="margin:0;color:var(--text-primary);">Objective of the Month</h2>'
         '<div style="font-size:0.75rem;color:var(--text-muted);">Monthly targets &amp; real production &mdash; {month}</div></div>'
         '</div>'.format(logo=logo_tag, month=month_label),
         unsafe_allow_html=True,

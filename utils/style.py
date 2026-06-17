@@ -642,7 +642,7 @@ def score_bar(label, value, max_val=100):
 
 # Password that protects the building / suite directory across the whole app.
 # Change this value to update the directory access code everywhere.
-DIRECTORY_PASSWORD = "patton-directory"
+DIRECTORY_PASSWORD = "patton.com"
 
 
 def require_directory_access(label="Building Directory", key="dir_gate"):
