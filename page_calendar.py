@@ -529,43 +529,59 @@ def _render_contracts(today):
             annotations=[dict(text="{}<br>leases".format(len(dated)), x=0.5, y=0.5,
                               font=dict(size=16, color="#94a3b8"), showarrow=False)],
         )
-        event = st.plotly_chart(fig, use_container_width=True, key="lease_pie",
-                                on_select="rerun")
-        st.caption("Click a slice to see every lease ending that year.")
+        st.plotly_chart(fig, use_container_width=True, key="lease_pie")
 
-        # Which year did the user click? (the selection object supports both
-        # ["selection"]["points"] and .selection.points access)
-        sel_year = None
-        try:
-            sel = event["selection"] if event else None
-            pts = sel["points"] if sel else []
-            if pts:
-                lbl = pts[0].get("label")
-                sel_year = int(lbl) if lbl is not None else None
-        except (ValueError, TypeError, KeyError, AttributeError):
-            sel_year = None
+        # Year buttons — clicking a year lists every lease ending that year.
+        # (Pie-slice clicks aren't reliably captured by Streamlit, so we use real
+        # buttons that map 1:1 to the slices/colors.)
+        st.caption("Click a year to see every lease ending that year:")
+        if st.session_state.get("lease_pie_year") not in years:
+            st.session_state["lease_pie_year"] = years[0]
+        per_row = 6
+        for r in range(0, len(years), per_row):
+            cols = st.columns(per_row)
+            for ci, y in enumerate(years[r:r + per_row]):
+                is_sel = st.session_state["lease_pie_year"] == y
+                if cols[ci].button("{} ({})".format(y, counts[y]),
+                                   key="lease_yr_{}".format(y),
+                                   use_container_width=True,
+                                   type="primary" if is_sel else "secondary"):
+                    st.session_state["lease_pie_year"] = y
+                    st.rerun()
 
-        if sel_year:
-            ending = sorted((c for c in dated if c["end"].year == sel_year),
-                            key=lambda c: c["end"])
-            st.markdown("##### {} &mdash; {} lease(s) ending".format(sel_year, len(ending)),
-                        unsafe_allow_html=True)
-            for c in ending:
-                where = " &middot; ".join(p for p in (c.get("building"), c.get("suite")) if p)
-                src = "Portfolio" if c.get("source") == "portfolio" else "Client"
-                st.markdown(
-                    '<div style="border:1px solid var(--border);border-left:3px solid var(--accent);'
-                    'border-radius:8px;padding:0.6rem 0.9rem;margin-bottom:0.5rem;background:var(--bg-secondary);">'
-                    '<div style="display:flex;justify-content:space-between;align-items:center;">'
-                    '<div style="font-weight:700;color:var(--text-primary);">{name}</div>'
-                    '<div style="font-size:0.72rem;color:var(--text-muted);">{src}</div></div>'
-                    '<div style="font-size:0.78rem;color:var(--text-secondary);">{where}</div>'
-                    '<div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.2rem;">'
-                    'Ends {end}</div>'
-                    '</div>'.format(
-                        name=c.get("name") or "Unknown tenant",
-                        src=src, where=where or "&mdash;",
-                        end=c["end"].strftime("%b %d, %Y"),
-                    ),
-                    unsafe_allow_html=True,
-                )
+        sel_year = st.session_state["lease_pie_year"]
+        ending = sorted((c for c in dated if c["end"].year == sel_year),
+                        key=lambda c: c["end"])
+        st.markdown("##### {} &mdash; {} lease(s) ending".format(sel_year, len(ending)),
+                    unsafe_allow_html=True)
+        for c in ending:
+            where = " &middot; ".join(p for p in (c.get("building"), c.get("suite")) if p)
+            src = "Portfolio" if c.get("source") == "portfolio" else "Client"
+            start = c.get("start")
+            start_str = start.strftime("%b %d, %Y") if start else "&mdash;"
+            yrs_left = (c["end"] - today).days / 365.25
+            left_str = "{:.1f} yr left".format(yrs_left) if yrs_left >= 0 else "expired"
+            term_str = ""
+            if start:
+                term_yrs = (c["end"] - start).days / 365.25
+                term_str = " &middot; {:.1f} yr term".format(term_yrs)
+            st.markdown(
+                '<div style="border:1px solid var(--border);border-left:3px solid var(--accent);'
+                'border-radius:8px;padding:0.7rem 0.95rem;margin-bottom:0.5rem;background:var(--bg-secondary);">'
+                '<div style="display:flex;justify-content:space-between;align-items:center;">'
+                '<div style="font-weight:700;color:var(--text-primary);font-size:0.95rem;">{name}</div>'
+                '<div style="font-size:0.68rem;color:var(--text-muted);text-transform:uppercase;'
+                'letter-spacing:0.5px;">{src}</div></div>'
+                '<div style="font-size:0.8rem;color:var(--text-secondary);margin-top:0.15rem;">{where}</div>'
+                '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.45rem;">'
+                '<div style="font-size:0.74rem;color:var(--text-tertiary);">{start} &rarr; '
+                '<b style="color:var(--text-secondary);">{end}</b>{term}</div>'
+                '<div style="font-size:0.72rem;font-weight:700;color:var(--accent);">{left}</div></div>'
+                '</div>'.format(
+                    name=c.get("name") or "Unknown tenant",
+                    src=src, where=where or "&mdash;",
+                    start=start_str, end=c["end"].strftime("%b %d, %Y"),
+                    term=term_str, left=left_str,
+                ),
+                unsafe_allow_html=True,
+            )
