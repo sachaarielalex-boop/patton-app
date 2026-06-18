@@ -134,10 +134,6 @@ def render_calendar_page():
         unsafe_allow_html=True,
     )
 
-    # Whole page (visits + lease contracts) is gated behind the patton.com code.
-    if not require_directory_access("Tenant Calendar", key="cal_gate"):
-        return
-
     visits = _get_visits()
 
     # KPIs
@@ -156,7 +152,9 @@ def render_calendar_page():
     tab1, tab2, tab4, tab3 = st.tabs(["Schedule Visit", "Upcoming", "Lease Contracts", "Follow-Up Email"])
 
     with tab4:
-        _render_contracts(today)
+        # Lease Contracts is the only gated tab — patton.com code required here.
+        if require_directory_access("Lease Contracts", key="cal_lease_gate"):
+            _render_contracts(today)
 
     # ── Tab 1: Schedule ──
     with tab1:

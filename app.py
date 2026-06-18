@@ -2072,9 +2072,34 @@ with tabs[12]:
 
     sold_psf = _median([c.get("psf") for c in val_sold if c.get("psf")])
     active_psf = _median([c.get("psf") for c in val_active if c.get("psf")])
-    est_value = int(sold_psf * subj_sqft) if (sold_psf and subj_sqft) else None
-    if active_psf and subj_sqft:
-        est_asking = int(active_psf * subj_sqft)
+
+    # When the county parcel has no building/lot area, estimate the subject size
+    # from the median size of nearby comps so we can still give a number.
+    est_sqft = subj_sqft
+    est_size_assumed = False
+    if not est_sqft:
+        comp_sizes = []
+        for c in (val_sold + val_active):
+            p, ppsf = c.get("price"), c.get("psf")
+            if p and ppsf:
+                comp_sizes.append(p / ppsf)
+        med_size = _median(comp_sizes)
+        if med_size:
+            est_sqft = int(med_size)
+            est_size_assumed = True
+
+    est_value = int(sold_psf * est_sqft) if (sold_psf and est_sqft) else None
+
+    # Last-resort rough estimate: median nearby sale price (neighborhood ballpark).
+    est_is_rough = False
+    if not est_value:
+        med_price = _median([c.get("price") for c in val_sold if c.get("price")])
+        if med_price:
+            est_value = int(med_price)
+            est_is_rough = True
+
+    if active_psf and est_sqft:
+        est_asking = int(active_psf * est_sqft)
     elif est_value:
         est_asking = int(est_value * 1.04)
     else:
@@ -2095,13 +2120,23 @@ with tabs[12]:
         owner = _o1 + ((" & " + _o2) if _o2 else "")
         folio = (parcel.get("FOLIO #") or "").replace("-", "")
 
+    # Subtitles explain how solid each estimate is.
+    if est_is_rough:
+        est_note = "Rough estimate &middot; {} nearby sales".format(len(val_sold))
+    elif est_size_assumed:
+        est_note = "Approx. &middot; {} comps, ~{:,} sqft assumed".format(len(val_sold), est_sqft)
+    elif est_value:
+        est_note = "{} sold comps".format(len(val_sold))
+    else:
+        est_note = "Insufficient data"
+    ask_note = "Approx. estimate" if (est_asking and not (active_psf and subj_sqft)) else (
+        "{} active listings".format(len(val_active)) if est_asking else "Insufficient data")
+
     value_cards = []
     value_cards.append(kpi("Last Recorded Sale", format_currency(last_price) if last_price else "N/A",
                            last_date or "County deed record"))
-    value_cards.append(kpi("Estimated Value", format_currency(est_value) if est_value else "N/A",
-                           "{} sold comps".format(len(val_sold)) if est_value else "Insufficient data"))
-    value_cards.append(kpi("Est. Asking Price", format_currency(est_asking) if est_asking else "N/A",
-                           "{} active listings".format(len(val_active)) if est_asking else "Insufficient data"))
+    value_cards.append(kpi("Estimated Value", format_currency(est_value) if est_value else "N/A", est_note))
+    value_cards.append(kpi("Est. Asking Price", format_currency(est_asking) if est_asking else "N/A", ask_note))
     if est_value and last_price:
         _appr = (est_value - last_price) / last_price * 100
         value_cards.append(kpi("Appreciation Since Sale", "{:+.0f}%".format(_appr), "vs last recorded sale"))
