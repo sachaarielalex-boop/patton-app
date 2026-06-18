@@ -639,20 +639,68 @@ def random_address(submarket):
         return None
     return random.choice(pool)
 
+_COUNTY_OWNER_URL = ("https://gisweb.miamidade.gov/arcgis/rest/services/"
+                     "MD_ComparableSales/MapServer/5/query")
+
+
+def _county_owner_search(query):
+    """Owner search against Miami-Dade County's full parcel layer (~1M parcels).
+
+    The bundled dataset is only 1776 parcels, so most owners aren't in it. This
+    queries the county's authoritative PaGis layer (TRUE_OWNER1/2, address, folio)
+    so any owner in the county resolves. Returns [] on any error (offline/blocked).
+    """
+    import requests
+    q = (query or "").strip().upper().replace("'", "''")
+    if not q:
+        return []
+    where = "UPPER(TRUE_OWNER1) LIKE '%{q}%' OR UPPER(TRUE_OWNER2) LIKE '%{q}%'".format(q=q)
+    try:
+        r = requests.get(_COUNTY_OWNER_URL, params={
+            "where": where,
+            "outFields": "FOLIO,TRUE_SITE_ADDR,TRUE_OWNER1,TRUE_OWNER2",
+            "returnGeometry": "false", "orderByFields": "TRUE_SITE_ADDR",
+            "resultRecordCount": "200", "f": "json",
+        }, timeout=15)
+        feats = r.json().get("features", [])
+    except Exception:
+        return []
+    out = []
+    for it in feats:
+        a = it.get("attributes", {})
+        addr = (a.get("TRUE_SITE_ADDR") or "").strip()
+        if not addr:
+            continue
+        out.append({
+            "owner": (a.get("TRUE_OWNER1") or a.get("TRUE_OWNER2") or "").strip(),
+            "address": addr,
+            "full_address": "{}, Miami, FL".format(addr),
+            "land_use": "", "folio": a.get("FOLIO", "") or "",
+            "sale_price": "", "sale_date": "", "lot_size": "",
+            "year_built": "", "zoning": "",
+        })
+    return out
+
+
 def search_by_owner(query):
     """Return every parcel whose owner matches the query (case-insensitive substring).
 
-    Each result is a dict with address, city, owner and key parcel details so the
-    UI can list all properties tied to an owner name.
+    Scans the bundled dataset first (rich fields), then the Miami-Dade County parcel
+    layer so owners outside the 1776 bundled parcels still resolve. Deduped by folio.
     """
-    try:
-        from parcels_data import ADDR_DATA
-    except ImportError:
-        return []
     q = (query or "").strip().lower()
     if not q:
         return []
-    out = []
+
+    out, seen_folios = [], set()
+
+    def _norm_folio(f):
+        return "".join(ch for ch in str(f or "") if ch.isdigit())
+
+    try:
+        from parcels_data import ADDR_DATA
+    except ImportError:
+        ADDR_DATA = {}
     for v in ADDR_DATA.values():
         owners = [v.get("true_owner1", ""), v.get("true_owner2", "")]
         owner_blob = " ".join(o for o in owners if o).lower()
@@ -672,6 +720,16 @@ def search_by_owner(query):
                 "year_built": v.get("YEAR BUILT", ""),
                 "zoning": v.get("ZONING CODE", ""),
             })
+            seen_folios.add(_norm_folio(v.get("FOLIO #", "")))
+
+    # County results fill in everything not in the bundled set.
+    for r in _county_owner_search(query):
+        nf = _norm_folio(r.get("folio"))
+        if nf and nf in seen_folios:
+            continue
+        seen_folios.add(nf)
+        out.append(r)
+
     out.sort(key=lambda r: (r["owner"], r["address"]))
     return out
 
