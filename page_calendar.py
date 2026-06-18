@@ -529,5 +529,43 @@ def _render_contracts(today):
             annotations=[dict(text="{}<br>leases".format(len(dated)), x=0.5, y=0.5,
                               font=dict(size=16, color="#94a3b8"), showarrow=False)],
         )
-        st.plotly_chart(fig, use_container_width=True)
-        st.caption("Each slice = number of leases ending that year. Click a member in the Tenure list above for details.")
+        event = st.plotly_chart(fig, use_container_width=True, key="lease_pie",
+                                on_select="rerun")
+        st.caption("Click a slice to see every lease ending that year.")
+
+        # Which year did the user click? (the selection object supports both
+        # ["selection"]["points"] and .selection.points access)
+        sel_year = None
+        try:
+            sel = event["selection"] if event else None
+            pts = sel["points"] if sel else []
+            if pts:
+                lbl = pts[0].get("label")
+                sel_year = int(lbl) if lbl is not None else None
+        except (ValueError, TypeError, KeyError, AttributeError):
+            sel_year = None
+
+        if sel_year:
+            ending = sorted((c for c in dated if c["end"].year == sel_year),
+                            key=lambda c: c["end"])
+            st.markdown("##### {} &mdash; {} lease(s) ending".format(sel_year, len(ending)),
+                        unsafe_allow_html=True)
+            for c in ending:
+                where = " &middot; ".join(p for p in (c.get("building"), c.get("suite")) if p)
+                src = "Portfolio" if c.get("source") == "portfolio" else "Client"
+                st.markdown(
+                    '<div style="border:1px solid var(--border);border-left:3px solid var(--accent);'
+                    'border-radius:8px;padding:0.6rem 0.9rem;margin-bottom:0.5rem;background:var(--bg-secondary);">'
+                    '<div style="display:flex;justify-content:space-between;align-items:center;">'
+                    '<div style="font-weight:700;color:var(--text-primary);">{name}</div>'
+                    '<div style="font-size:0.72rem;color:var(--text-muted);">{src}</div></div>'
+                    '<div style="font-size:0.78rem;color:var(--text-secondary);">{where}</div>'
+                    '<div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.2rem;">'
+                    'Ends {end}</div>'
+                    '</div>'.format(
+                        name=c.get("name") or "Unknown tenant",
+                        src=src, where=where or "&mdash;",
+                        end=c["end"].strftime("%b %d, %Y"),
+                    ),
+                    unsafe_allow_html=True,
+                )
