@@ -6,6 +6,36 @@ GEO_URL = "https://nominatim.openstreetmap.org/search"
 REVERSE_URL = "https://nominatim.openstreetmap.org/reverse"
 CENSUS_URL = "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress"
 ESRI_REVERSE_URL = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/reverseGeocode"
+MDC_PARCEL_URL = ("https://gisweb.miamidade.gov/arcgis/rest/services/"
+                  "AddressSearchMap_PropertiesWithZip/MapServer/1/query")
+
+
+def _miamidade_reverse(lat, lon):
+    """Authoritative reverse geocode against Miami-Dade County's own parcel layer.
+
+    Point-in-polygon query returns the exact parcel under the clicked point with the
+    official county address + folio. It's the ultimate authority for the county and
+    is not IP-blocked on Cloud. Returns the address string, or None (e.g. clicks over
+    water or in municipalities not in this layer, where Esri takes over).
+    """
+    import re
+    try:
+        r = requests.get(MDC_PARCEL_URL, params={
+            "geometry": "{},{}".format(lon, lat), "geometryType": "esriGeometryPoint",
+            "inSR": "4326", "spatialRel": "esriSpatialRelIntersects",
+            "outFields": "*", "returnGeometry": "false", "f": "json",
+        }, timeout=10)
+        feats = r.json().get("features", [])
+    except Exception:
+        return None
+    if not feats:
+        return None
+    a = feats[0].get("attributes", {})
+    street = re.sub(r"\s+", " ", str(a.get("address") or "")).strip()
+    if not street:
+        return None
+    zip5 = str(a.get("zip_code") or a.get("zipcode") or "").strip()[:5]
+    return "{}, FL {}".format(street, zip5).strip() if zip5 else "{}, FL".format(street)
 
 
 def _esri_reverse(lat, lon):
@@ -179,17 +209,24 @@ def reverse_geocode(lat, lon):
       1. A known parcel only if it is essentially under the click (~0.05 mi). The old
          0.3 mi threshold snapped clicks to parcels several blocks away — the wrong
          address the user saw.
-      2. Esri World reverse geocoder — accurate street address for the exact point,
-         works on Streamlit Cloud (Nominatim is blocked there).
-      3. Nominatim (works locally).
-      4. Nearest parcel however far, then raw coordinates.
+      2. Miami-Dade County's own parcel layer — the authoritative county address for
+         the exact point (covers the whole county, not blocked on Cloud).
+      3. Esri World reverse geocoder — accurate fallback (Miami Beach, waterfront, and
+         any point the county layer doesn't cover).
+      4. Nominatim (works locally).
+      5. Nearest parcel however far, then raw coordinates.
     """
     # 1) Parcel directly under the click → canonical DB address.
     addr, dist = _nearest_parcel(lat, lon)
     if addr and dist is not None and dist <= 0.05:
         return addr
 
-    # 2) Esri — accurate street address for the clicked point.
+    # 2) Miami-Dade County parcel under the point → authoritative county address.
+    mdc = _miamidade_reverse(lat, lon)
+    if mdc:
+        return mdc
+
+    # 3) Esri — accurate street address for the clicked point.
     esri = _esri_reverse(lat, lon)
     if esri:
         return esri
