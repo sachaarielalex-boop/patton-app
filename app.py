@@ -674,6 +674,15 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+_rc1, _rc2 = st.columns([1, 4])
+with _rc1:
+    if st.button("New search / Back to map", key="reset_to_map", use_container_width=True):
+        st.session_state.searched = False
+        for _k in ("address", "geo", "nb_name", "nb", "records", "parcel", "scores",
+                   "owner_query", "_rand_addr", "_auto_analyze"):
+            st.session_state.pop(_k, None)
+        st.rerun()
+
 # ── Tabs ───────────────────────────────────────────────────
 tab_names = ["Overview", "Map", "Property", "Zoning", "Dev Plan", "Market", "Financial", "Valuation", "Risk", "AI Summary", "Best Rec", "Export", "Sales & Value"]
 tabs = st.tabs(tab_names)
@@ -2003,12 +2012,57 @@ with tabs[12]:
         except Exception:
             val_active = []
 
+    # Local parcel-database fallback (Redfin is rate-limited / blocked on Streamlit
+    # Cloud, so build comps from the bundled county parcels with real sale prices).
+    val_sold_source = "REDFIN / MLS"
+    if not val_sold and geo and geo.get("lat"):
+        local_comps = []
+        try:
+            from parcels_data import ADDR_DATA
+            for _v in ADDR_DATA.values():
+                try:
+                    plat = float(_v.get("Latitude"))
+                    plon = float(_v.get("Longitude"))
+                    price = int(str(_v.get("SALE PRICE") or 0).replace(",", ""))
+                    area = int(str(_v.get("BUILDING AREA") or 0).replace(",", ""))
+                except (TypeError, ValueError):
+                    continue
+                if price <= 0 or area <= 0:
+                    continue
+                d = _distance_mi(geo["lat"], geo["lon"], plat, plon)
+                if d is None or d > 1.0:
+                    continue
+                _city = _v.get("City", "Miami")
+                local_comps.append({
+                    "address": "{}, {}".format(_v.get("Address", ""), _city).strip(", "),
+                    "price": price, "psf": round(price / area, 2),
+                    "lat": plat, "lon": plon,
+                    "sold_date": _v.get("SALE DATE", ""), "dom": None, "url": None,
+                })
+        except Exception:
+            local_comps = []
+        if local_comps:
+            local_comps.sort(key=lambda c: _distance_mi(geo["lat"], geo["lon"], c["lat"], c["lon"]) or 9)
+            val_sold = local_comps[:25]
+            val_sold_source = "MIAMI-DADE PARCELS"
+
     def _median(vals):
         vals = sorted(v for v in vals if v)
         if not vals:
             return None
         n = len(vals)
         return vals[n // 2] if n % 2 else (vals[n // 2 - 1] + vals[n // 2]) / 2
+
+    def _comp_link(c):
+        """Address cell as a clickable listing link (the comp's own URL, else a Zillow search)."""
+        addr = c.get("address") or "-"
+        url = c.get("url")
+        if not url and addr and addr != "-":
+            from urllib.parse import quote_plus
+            url = "https://www.zillow.com/homes/{}_rb/".format(quote_plus(addr))
+        if not url:
+            return addr
+        return '<a href="{}" target="_blank" style="color:var(--accent);font-weight:600;">{}</a>'.format(url, addr)
 
     sold_psf = _median([c.get("psf") for c in val_sold if c.get("psf")])
     active_psf = _median([c.get("psf") for c in val_active if c.get("psf")])
@@ -2086,7 +2140,7 @@ with tabs[12]:
     if val_sold:
         st.markdown(
             '<div class="card"><div class="card-title">Most Recent Sales Nearby '
-            '<span class="source-tag">REDFIN / MLS</span></div>',
+            '<span class="source-tag">{}</span></div>'.format(val_sold_source),
             unsafe_allow_html=True,
         )
         _srt = sorted(val_sold, key=lambda c: c.get("sold_date") or "", reverse=True)
@@ -2099,7 +2153,7 @@ with tabs[12]:
                 '<tr><td class="dv" style="text-align:left;font-weight:600;">{a}</td>'
                 '<td class="dv">{d}</td><td class="dv">{p}</td><td class="dv">{psf}</td><td class="dv">{dist}</td></tr>'
             ).format(
-                a=c.get("address", "-"), d=c.get("sold_date", "-"),
+                a=_comp_link(c), d=c.get("sold_date", "-"),
                 p=format_currency(c.get("price")) if c.get("price") else "-",
                 psf="${:.0f}".format(c["psf"]) if c.get("psf") else "-",
                 dist="{:.2f} mi".format(_dist) if _dist is not None else "-",
@@ -2124,7 +2178,7 @@ with tabs[12]:
                 '<tr><td class="dv" style="text-align:left;font-weight:600;">{a}</td>'
                 '<td class="dv">{p}</td><td class="dv">{psf}</td><td class="dv">{dom}</td><td class="dv">{dist}</td></tr>'
             ).format(
-                a=c.get("address", "-"),
+                a=_comp_link(c),
                 p=format_currency(c.get("price")) if c.get("price") else "-",
                 psf="${:.0f}".format(c["psf"]) if c.get("psf") else "-",
                 dom=c.get("dom") if c.get("dom") is not None else "-",

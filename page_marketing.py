@@ -12,16 +12,20 @@ _DB_KEY = "marketing_files"
 _ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
 
 # Categories that ship with bundled default files from the repo (assets/<subdir>/).
-_DEFAULT_DIRS = {"logos": "logos", "decks": "decks"}
+_DEFAULT_DIRS = {"logos": "logos", "decks": "decks", "media": "media", "sales_reports": "sales_reports"}
+
+# Categories gated behind the directory password (patton.com).
+_LOCKED_CATS = {"sales_reports"}
 
 # (key, icon, label, description)
 CATEGORIES = [
     ("logos", "&#127991;", "Logos", "Patton logos &mdash; primary, mono, icon, variations."),
     ("images", "&#128247;", "Images", "Photography, building shots, headshots, stock imagery."),
     ("decks", "&#128202;", "Presentation Decks", "Pitch decks, listing presentations, capability decks."),
-    ("media", "&#128226;", "Media", "Press mentions, brochures, flyers, social graphics."),
+    ("media", "&#128226;", "Media &amp; Letterheads", "Letterheads, brochures, flyers, social graphics."),
     ("case_studies", "&#128218;", "Case Studies", "Deal write-ups, success stories, tenant testimonials."),
     ("videos", "&#127909;", "Videos", "Property tours, promo reels, drone footage."),
+    ("sales_reports", "&#128202;", "Sales Reports", "Monthly &amp; yearly sales activity and goals (restricted)."),
 ]
 _CAT_LABEL = {k: lbl for k, _, lbl, _ in CATEGORIES}
 
@@ -68,18 +72,40 @@ def _fmt_size(n):
     return "{:.1f} TB".format(n)
 
 
+_HIDDEN_KEY = "marketing_hidden"
+
+
+def _get_hidden():
+    h = shared_db.get(_HIDDEN_KEY, {})
+    return h if isinstance(h, dict) else {}
+
+
+def _hide_default(category, name):
+    h = _get_hidden()
+    names = h.get(category, [])
+    if name not in names:
+        names.append(name)
+    h[category] = names
+    shared_db.put(_HIDDEN_KEY, h)
+
+
 def _default_files(category):
-    """Bundled repo assets for a category, as (name, bytes). Empty if none."""
+    """Bundled repo assets for a category, as (name, bytes).
+
+    Skips any file the user has removed (persisted in shared_db so it survives the
+    read-only Cloud filesystem). Empty if none.
+    """
     sub = _DEFAULT_DIRS.get(category)
     if not sub:
         return []
     d = os.path.join(_ASSETS_DIR, sub)
     if not os.path.isdir(d):
         return []
+    hidden = set(_get_hidden().get(category, []))
     out = []
     for name in sorted(os.listdir(d)):
         path = os.path.join(d, name)
-        if name.startswith(".") or not os.path.isfile(path):
+        if name.startswith(".") or not os.path.isfile(path) or name in hidden:
             continue
         try:
             with open(path, "rb") as fh:
@@ -133,7 +159,7 @@ def _render_landing():
     )
 
     st.markdown("##### Select a category")
-    for row_start in (0, 2, 4):
+    for row_start in range(0, len(CATEGORIES), 2):
         cols = st.columns(2, gap="large")
         for ci, (key, icon, label, desc) in enumerate(CATEGORIES[row_start:row_start + 2]):
             count = _category_count(key, store)
@@ -162,6 +188,12 @@ def _render_category(cat):
     label = _CAT_LABEL[cat]
     st.markdown("### {}".format(label))
 
+    # Restricted categories (e.g. Sales Reports) require the patton.com code.
+    if cat in _LOCKED_CATS:
+        from utils.style import require_directory_access
+        if not require_directory_access(label, key="mkt_gate_" + cat):
+            return
+
     # Uploader
     uploaded = st.file_uploader(
         "Add documents to {}".format(label),
@@ -182,7 +214,7 @@ def _render_category(cat):
         for di, (name, data) in enumerate(defaults):
             ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
             with st.container(border=True):
-                dc1, dc2 = st.columns([3, 1])
+                dc1, dc2, dc3 = st.columns([3, 1, 1])
                 with dc1:
                     st.markdown(
                         '<div style="font-size:0.88rem;font-weight:700;color:var(--text-primary);">{}</div>'
@@ -196,6 +228,10 @@ def _render_category(cat):
                         "Download", data, name, "image/png" if ext == "png" else "application/octet-stream",
                         key="mkt_def_dl_{}_{}".format(cat, di), use_container_width=True,
                     )
+                with dc3:
+                    if st.button("Remove", key="mkt_def_rm_{}_{}".format(cat, di), use_container_width=True):
+                        _hide_default(cat, name)
+                        st.rerun()
                 if ext in _IMAGE_EXT and ext != "svg":
                     st.image(data, width=260)
                 elif ext == "svg":
