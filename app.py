@@ -23,7 +23,7 @@ st.set_page_config(
 )
 
 try:
-    from utils.style import inject_css, kpi, tr, score_bar, score_color, LOGO_B64
+    from utils.style import inject_css, kpi, tr, score_bar, score_color, LOGO_B64, scroll_to_top_on_nav
 except Exception as e:
     st.error("Import error: {}".format(e))
     st.stop()
@@ -150,6 +150,9 @@ with _tb_full:
 # ── App Mode Routing ──────────────────────────────────────
 if "app_mode" not in st.session_state:
     st.session_state["app_mode"] = "home"
+
+# Land at the top of every page when navigating (not on in-page reruns).
+scroll_to_top_on_nav(st.session_state["app_mode"])
 
 if st.session_state["app_mode"] == "office":
     from page_office import render_office_page

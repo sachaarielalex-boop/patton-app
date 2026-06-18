@@ -2,6 +2,23 @@
 import streamlit as st
 
 
+def _address_link(address):
+    """Turn an address into a clickable link to where the property is listed.
+
+    Points at a LoopNet search (commercial listings) for the address, which
+    surfaces the live listing when the building is on the market and the
+    address/area otherwise.
+    """
+    if not address:
+        return "-"
+    from urllib.parse import quote_plus
+    url = "https://www.loopnet.com/search/commercial-real-estate/{}/for-lease/".format(
+        quote_plus(address))
+    return ('<a href="{}" target="_blank" '
+            'style="color:var(--accent);font-weight:600;text-decoration:none;">{} &#8599;</a>'.format(
+                url, address))
+
+
 def render_buildings_page():
     from utils.style import inject_css, LOGO_B64
     from utils.buildings_inventory import get_all_buildings
@@ -143,7 +160,7 @@ def _render_building(bldg):
     with c1:
         st.markdown('<div class="card"><div class="card-title">Building Details</div>', unsafe_allow_html=True)
         rows = ""
-        rows += tr("Address", bldg["address"])
+        rows += tr("Address", _address_link(bldg["address"]))
         rows += tr("Submarket", bldg["submarket"])
         rows += tr("Class", bldg["building_class"])
         rows += tr("Floors", str(bldg["floors"]))

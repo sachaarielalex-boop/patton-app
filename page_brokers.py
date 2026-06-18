@@ -8,6 +8,16 @@ def _load_brokers():
     return FIRMS, BROKERS, CONTACTS
 
 
+_BROKER_FIELDS = ("name", "type", "organization", "email", "mobile", "market", "linkedin")
+
+
+def _normalize_broker(b):
+    """Ensure a broker dict has every field the page reads."""
+    out = {k: (b.get(k) or "") for k in _BROKER_FIELDS}
+    out["custom"] = True
+    return out
+
+
 def render_brokers_page():
     import pandas as pd
     from utils.style import inject_css, LOGO_B64
@@ -29,12 +39,18 @@ def render_brokers_page():
         unsafe_allow_html=True,
     )
 
+    import shared_db
     with st.spinner("Loading contacts..."):
         try:
             firms, brokers, contacts = _load_brokers()
         except Exception as e:
             st.error("Error loading broker data: {}".format(e))
             firms, brokers, contacts = [], [], []
+
+    # Brokers added by the user (persisted in shared_db) are merged into the list.
+    custom = shared_db.get("custom_brokers", [])
+    if isinstance(custom, list) and custom:
+        brokers = list(brokers) + [_normalize_broker(b) for b in custom]
 
     # KPIs
     st.markdown(
@@ -51,8 +67,9 @@ def render_brokers_page():
 
     # ── Tab 1: Brokers ──
     with tab1:
+        _render_add_broker(shared_db)
+
         if brokers:
-            import shared_db
             meta = shared_db.get("broker_meta", {})
             if not isinstance(meta, dict):
                 meta = {}
@@ -182,3 +199,47 @@ def render_brokers_page():
             st.dataframe(df.astype(str), use_container_width=True, hide_index=True)
         else:
             st.info("No contact data found.")
+
+
+def _render_add_broker(shared_db):
+    """Form to add a new broker to the database (persisted in shared_db)."""
+    with st.expander("Add a broker", expanded=False):
+        with st.form("add_broker_form", clear_on_submit=True):
+            c1, c2 = st.columns(2)
+            with c1:
+                name = st.text_input("Name *", key="ab_name")
+                organization = st.text_input("Organization", key="ab_org")
+                sector = st.selectbox("Sector", ["Commercial", "Residential", "Both"], key="ab_sector")
+                specialty = st.text_input("Specialty", key="ab_spec",
+                                          placeholder="e.g. Office sales Brickell")
+            with c2:
+                email = st.text_input("Email", key="ab_email")
+                mobile = st.text_input("Mobile", key="ab_mobile")
+                market = st.text_input("Market / Area", key="ab_market")
+                linkedin = st.text_input("LinkedIn", key="ab_linkedin",
+                                         placeholder="linkedin.com/in/...")
+            submitted = st.form_submit_button("Add broker", type="primary", use_container_width=True)
+            if submitted:
+                if not name.strip():
+                    st.error("Enter the broker's name.")
+                    return
+                new_broker = {
+                    "name": name.strip(), "type": "", "organization": organization.strip(),
+                    "email": email.strip(), "mobile": mobile.strip(),
+                    "market": market.strip(), "linkedin": linkedin.strip(),
+                }
+                custom = shared_db.get("custom_brokers", [])
+                if not isinstance(custom, list):
+                    custom = []
+                custom.append(new_broker)
+                shared_db.put("custom_brokers", custom)
+
+                # Persist sector/specialty in the same broker_meta store the editor uses.
+                meta = shared_db.get("broker_meta", {})
+                if not isinstance(meta, dict):
+                    meta = {}
+                meta[name.strip()] = {"sector": sector, "specialty": specialty.strip()}
+                shared_db.put("broker_meta", meta)
+
+                st.success("{} added to the broker database.".format(name.strip()))
+                st.rerun()

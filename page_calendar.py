@@ -115,7 +115,7 @@ def _month_calendar_html(visits, today, year, month, lease_events=None):
 
 
 def render_calendar_page():
-    from utils.style import inject_css, LOGO_B64
+    from utils.style import inject_css, LOGO_B64, require_directory_access
     inject_css()
 
     if st.sidebar.button("Back to Home", key="cal_back"):
@@ -133,6 +133,10 @@ def render_calendar_page():
         '</div>'.format(logo=logo_tag),
         unsafe_allow_html=True,
     )
+
+    # Whole page (visits + lease contracts) is gated behind the patton.com code.
+    if not require_directory_access("Tenant Calendar", key="cal_gate"):
+        return
 
     visits = _get_visits()
 
