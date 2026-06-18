@@ -604,23 +604,31 @@ def scroll_to_top_on_nav(current_mode):
     """Scroll the page back to the top whenever the app navigates to a new page.
 
     Streamlit keeps the previous scroll position on rerun, so jumping from a long
-    page to another lands you mid-page (often at the bottom). We only fire when the
+    page to another lands you mid-page (often at the bottom). We only scroll when the
     mode actually changes, so in-page interactions (saving, filtering) don't jump.
+
+    IMPORTANT: the components.html element is rendered on EVERY run (not only on nav),
+    so the element tree stays stable. If it appeared only on navigation, the component
+    count before later widgets (e.g. st_folium on the property page) would shift between
+    runs and break their state — which is why the main map stopped working.
     """
-    if st.session_state.get("_last_nav_mode") == current_mode:
-        return
+    nav = st.session_state.get("_last_nav_mode") != current_mode
     st.session_state["_last_nav_mode"] = current_mode
+
     import streamlit.components.v1 as components
     import time
+    if nav:
+        body = (
+            "var d = window.parent.document;"
+            "var t = d.querySelector('section.main') || d.querySelector('[data-testid=\"stMain\"]')"
+            " || d.querySelector('.main') || d.scrollingElement || d.documentElement;"
+            "if (t) { t.scrollTo ? t.scrollTo(0, 0) : (t.scrollTop = 0); }"
+            "try { window.parent.scrollTo(0, 0); } catch (e) {}"
+        )
+    else:
+        body = ""  # no-op, but the component still renders to keep the tree stable
     components.html(
-        "<script>"
-        "var d = window.parent.document;"
-        "var t = d.querySelector('section.main') || d.querySelector('[data-testid=\"stMain\"]')"
-        " || d.querySelector('.main') || d.scrollingElement || d.documentElement;"
-        "if (t) {{ t.scrollTo ? t.scrollTo(0, 0) : (t.scrollTop = 0); }}"
-        "try {{ window.parent.scrollTo(0, 0); }} catch (e) {{}}"
-        "var _k = {};"  # unique token forces Streamlit to re-run the script each nav
-        "</script>".format(int(time.time() * 1000)),
+        "<script>{} var _k = {};</script>".format(body, int(time.time() * 1000)),
         height=0,
     )
 
