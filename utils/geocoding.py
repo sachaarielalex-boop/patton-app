@@ -5,6 +5,37 @@ import math
 GEO_URL = "https://nominatim.openstreetmap.org/search"
 REVERSE_URL = "https://nominatim.openstreetmap.org/reverse"
 CENSUS_URL = "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress"
+ESRI_REVERSE_URL = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/reverseGeocode"
+
+
+def _esri_reverse(lat, lon):
+    """Accurate reverse geocode via the Esri World geocoder.
+
+    Esri's public geocode.arcgis.com works without a token for reverseGeocode and,
+    unlike Nominatim, is NOT IP-blocked on Streamlit Cloud's shared IPs. Returns a
+    real street address for the clicked point (e.g. "1631 Collins Ave, Miami Beach,
+    FL"), or None.
+    """
+    try:
+        r = requests.get(ESRI_REVERSE_URL, params={
+            "location": "{},{}".format(lon, lat), "f": "json", "outFields": "*",
+        }, timeout=10)
+        a = r.json().get("address", {})
+    except Exception:
+        return None
+    street = (a.get("Address") or "").strip()
+    city = (a.get("City") or a.get("Neighborhood") or "Miami").strip()
+    state = (a.get("RegionAbbr") or "FL").strip()
+    if not street:
+        # No street component — fall back to whatever match label Esri gave.
+        label = (a.get("Match_addr") or a.get("LongLabel") or "").strip()
+        return label or None
+    parts = [street]
+    if city:
+        parts.append(city)
+    if state:
+        parts.append(state)
+    return ", ".join(parts)
 
 
 def _census_geocode(addr):
@@ -142,16 +173,28 @@ def _nearest_parcel(lat, lon):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def reverse_geocode(lat, lon):
-    """Resolve a clicked map point to a street address (best-effort).
+    """Resolve a clicked map point to a street address (accurate, best-effort).
 
-    Tries the nearest known parcel first (works offline / on Cloud), then Nominatim,
-    and only falls back to raw coordinates if nothing resolves.
+    Order matters for accuracy:
+      1. A known parcel only if it is essentially under the click (~0.05 mi). The old
+         0.3 mi threshold snapped clicks to parcels several blocks away — the wrong
+         address the user saw.
+      2. Esri World reverse geocoder — accurate street address for the exact point,
+         works on Streamlit Cloud (Nominatim is blocked there).
+      3. Nominatim (works locally).
+      4. Nearest parcel however far, then raw coordinates.
     """
-    # Nearest parcel within ~0.3 mi is treated as a confident match.
+    # 1) Parcel directly under the click → canonical DB address.
     addr, dist = _nearest_parcel(lat, lon)
-    if addr and dist is not None and dist <= 0.3:
+    if addr and dist is not None and dist <= 0.05:
         return addr
 
+    # 2) Esri — accurate street address for the clicked point.
+    esri = _esri_reverse(lat, lon)
+    if esri:
+        return esri
+
+    # 3) Nominatim (local / when reachable).
     try:
         r = requests.get(REVERSE_URL, params={
             "lat": lat, "lon": lon, "format": "json", "addressdetails": 1, "zoom": 18
@@ -170,7 +213,7 @@ def reverse_geocode(lat, lon):
     except Exception:
         pass
 
-    # Fall back to the nearest parcel even if a little further out.
+    # 4) Last resort: nearest parcel however far, then raw coordinates.
     if addr:
         return addr
     return "{:.5f}, {:.5f}".format(lat, lon)
