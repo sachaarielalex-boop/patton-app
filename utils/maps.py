@@ -80,6 +80,20 @@ def render_map_2d(lat, lon, label="Property", comps=None, radius_miles=1, show_l
             popup_parts.append("<span style='color:#94a3b8;font-size:10px;'>{:.2f} mi from subject</span>".format(dist))
             if s.get("source"):
                 popup_parts.append("<span style='background:#f1f5f9;color:#475569;padding:1px 5px;border-radius:3px;font-size:9px;'>{}</span>".format(s["source"]))
+
+            # "View listing" button — the real listing URL if we have one, else a
+            # Google search for the address (surfaces Redfin/Zillow/operator pages).
+            listing_url = s.get("url")
+            if not listing_url and s.get("addr"):
+                from urllib.parse import quote_plus
+                listing_url = "https://www.google.com/search?q={}".format(
+                    quote_plus(s["addr"] + " for sale"))
+            if listing_url:
+                popup_parts.append(
+                    "<a href='{}' target='_blank' rel='noopener' "
+                    "style='display:inline-block;margin-top:4px;background:#2563eb;color:#fff;"
+                    "padding:4px 10px;border-radius:5px;font-size:11px;font-weight:600;"
+                    "text-decoration:none;'>View listing &#8599;</a>".format(listing_url))
             popup_html = "<br>".join(popup_parts)
 
             icon_name = "building" if comp_type == "dev" else ("dollar-sign" if comp_type == "sale" else ("key" if comp_type == "rent" else "exclamation-triangle"))

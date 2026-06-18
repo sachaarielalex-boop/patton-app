@@ -807,6 +807,7 @@ with tabs[1]:
                         "type": s.get("type", ""),
                         "comp_type": "sale",
                         "source": "Redfin",
+                        "url": s.get("url"),
                     })
 
         if show_active and geo.get("lat"):
@@ -822,6 +823,7 @@ with tabs[1]:
                         "type": a.get("type", ""),
                         "comp_type": "rent" if "rent" in a.get("type", "").lower() else "sale",
                         "source": "Redfin",
+                        "url": a.get("url"),
                     })
 
         if nb and nb.get("last_sales"):
@@ -835,6 +837,7 @@ with tabs[1]:
                         "type": s.get("type", ""),
                         "comp_type": "sale",
                         "source": "Database",
+                        "url": s.get("url"),
                     })
 
         if map_sub == "2D Map":
