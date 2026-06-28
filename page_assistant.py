@@ -173,7 +173,7 @@ def _orb(state):
 
 # ── Page ──────────────────────────────────────────────────────────────────
 def render_assistant_page():
-    from utils.style import inject_css, LOGO_B64
+    from utils.style import inject_css, LOGO_B64, require_directory_access
     inject_css()
 
     if st.sidebar.button("Back to Home", key="asst_back"):
@@ -185,11 +185,19 @@ def render_assistant_page():
         logo_tag = '<img src="data:image/png;base64,{}" style="height:50px;">'.format(LOGO_B64)
     st.markdown(
         '<div style="display:flex;align-items:center;gap:1rem;margin-bottom:0.5rem;">'
-        '{logo}<div><h2 style="margin:0;color:var(--text-primary);">PATTON Assistant</h2>'
+        '{logo}<div>'
+        '<h2 style="margin:0;color:var(--text-primary);">PATTON Assistant '
+        '<span style="font-size:0.6rem;font-weight:800;letter-spacing:1px;text-transform:uppercase;'
+        'color:var(--amber);background:var(--amber-soft);border:1px solid var(--amber-border);'
+        'border-radius:6px;padding:2px 8px;vertical-align:middle;">Beta Development</span></h2>'
         '<div style="font-size:0.75rem;color:var(--text-muted);">Free voice co-pilot &mdash; no account, no key</div>'
         '</div></div>'.format(logo=logo_tag),
         unsafe_allow_html=True,
     )
+
+    # Beta feature — gated behind the patton.com code.
+    if not require_directory_access("PATTON Assistant (Beta)", key="assistant_gate"):
+        return
 
     _orb(st.session_state.get("_assistant_state", "idle"))
 
