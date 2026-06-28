@@ -214,6 +214,11 @@ if st.session_state["app_mode"] == "sales":
     render_sales_page()
     st.stop()
 
+if st.session_state["app_mode"] == "assistant":
+    from page_assistant import render_assistant_page
+    render_assistant_page()
+    st.stop()
+
 # ── HOME PAGE ─────────────────────────────────────────────
 if st.session_state["app_mode"] == "home":
     st.markdown(
@@ -305,9 +310,13 @@ if st.session_state["app_mode"] == "home":
          "var(--green-soft)", "var(--green-border)",
          "Monthly sales targets per team member: goal vs. real production, to-do lists and full-team progress.",
          '<span class="badge badge-blue">Per Person</span><span class="badge badge-green">Team View</span>'),
+        ("btn_assistant", "assistant", "&#x1F916;", "PATTON Assistant",
+         "var(--accent-soft)", "var(--accent-border)",
+         "Talk to PATTON: a voice-driven AI co-pilot that searches owners, analyzes addresses and reads your portfolio.",
+         '<span class="badge badge-blue">Voice</span><span class="badge badge-green">AI Co-Pilot</span>'),
     ]
 
-    for row_start in (0, 2, 4):
+    for row_start in range(0, len(MODULES), 2):
         cols = st.columns(2, gap="large")
         for ci, mod in enumerate(MODULES[row_start:row_start + 2]):
             key, mode, icon, title, ibg, ibd, desc, badges = mod
@@ -325,7 +334,7 @@ if st.session_state["app_mode"] == "home":
                     if st.button("Open " + title, use_container_width=True, key=key, type="primary"):
                         st.session_state["app_mode"] = mode
                         st.rerun()
-        if row_start in (0, 2):
+        if row_start + 2 < len(MODULES):
             st.markdown('<div style="height:0.4rem;"></div>', unsafe_allow_html=True)
 
     # ── Quick Access Tabs ──────────────────────────────────
