@@ -1,151 +1,121 @@
-"""PATTON Assistant — a voice-driven, Jarvis-style AI that pilots the app.
+"""PATTON Assistant — a 100% FREE voice-driven co-pilot (no API key, no account).
 
-Push-to-talk (free browser speech) -> Claude (with tools over PATTON's own data) ->
-spoken reply via the browser's speech synthesis + an animated arc-reactor orb.
-
-Setup required (Streamlit secrets or env):
-  ANTHROPIC_API_KEY = "sk-ant-..."
-Optional package for the mic button (falls back to typing if absent):
-  streamlit-mic-recorder
+Voice in: streamlit_mic_recorder.speech_to_text (free browser speech recognition).
+Voice out: the browser's speechSynthesis (free).
+"Brain": a local intent parser (regex/keywords) — no paid LLM. It understands
+commands and drives the app: owner search, address analysis, portfolio, leases,
+navigation. Bilingual (English / French) keywords.
 """
 import json
+import re
+import datetime
 import streamlit as st
 
-ASSISTANT_MODEL = "claude-sonnet-4-6"
 
-SYSTEM_PROMPT = (
-    "You are the PATTON Assistant, a calm, concise, British-butler-style AI for a "
-    "Miami-Dade commercial real-estate intelligence app called PATTON. You help the "
-    "user analyze properties, find owners, and review the building portfolio and "
-    "leases. Use the tools to answer with real data — never invent folios, owners or "
-    "numbers. Keep spoken replies short and natural (1-3 sentences); the user hears "
-    "them aloud. When the user wants to open or analyze something, call the matching "
-    "action tool. Address the user politely (e.g. 'sir' sparingly, like a butler)."
-)
-
-TOOLS = [
-    {"name": "search_owner",
-     "description": "Find all Miami-Dade properties owned by a person or company name.",
-     "input_schema": {"type": "object",
-                      "properties": {"name": {"type": "string"}}, "required": ["name"]}},
-    {"name": "portfolio_summary",
-     "description": "Summary of Patton's owned building portfolio: buildings, RSF, occupancy, vacant suites.",
-     "input_schema": {"type": "object", "properties": {}}},
-    {"name": "lease_expirations",
-     "description": "List leases that expire, optionally filtered to a single year.",
-     "input_schema": {"type": "object",
-                      "properties": {"year": {"type": "integer"}}}},
-    {"name": "analyze_address",
-     "description": "Open PATTON's full analysis for a specific Miami-Dade address. Use when the user wants to analyze/look at a property.",
-     "input_schema": {"type": "object",
-                      "properties": {"address": {"type": "string"}}, "required": ["address"]}},
-    {"name": "navigate",
-     "description": "Open a section of the app.",
-     "input_schema": {"type": "object",
-                      "properties": {"page": {"type": "string",
-                          "enum": ["home", "property", "office", "buildings", "brokers",
-                                   "tenants", "calendar", "marketing", "sales", "projects"]}},
-                      "required": ["page"]}},
-]
+# ── Intent parsing (the free "brain") ─────────────────────────────────────
+_PAGES = {
+    "home": ["home", "accueil", "menu principal"],
+    "property": ["property search", "recherche de propriété", "property page"],
+    "office": ["office suite", "suite finder", "bureau"],
+    "buildings": ["building", "buildings", "immeuble", "immeubles"],
+    "brokers": ["broker", "brokers", "courtier", "courtiers"],
+    "tenants": ["tenant folder", "tenants", "locataire", "locataires", "folders"],
+    "calendar": ["calendar", "calendrier", "lease contract", "leases"],
+    "marketing": ["marketing"],
+    "sales": ["monthly goal", "objectif", "sales goal"],
+    "projects": ["project", "projects", "projet", "projets"],
+}
 
 
-# ── Tool implementations ──────────────────────────────────────────────────
-def _run_tool(name, inp):
-    inp = inp or {}
-    try:
-        if name == "search_owner":
-            from utils.property_data import search_by_owner
-            res = search_by_owner(inp.get("name", ""))[:15]
-            if not res:
-                return "No properties found for that owner."
-            return json.dumps([{"address": r.get("address"), "owner": r.get("owner"),
-                                "folio": r.get("folio")} for r in res])
-
-        if name == "portfolio_summary":
-            from utils.buildings_inventory import get_all_buildings
-            bs = get_all_buildings()
-            data = []
-            for b in bs:
-                avail = sum(1 for s in b["suites"] if s["status"] in ("vacant", "expired"))
-                data.append({"name": b["name"], "rsf": b["building_rsf"],
-                             "occupancy": b["occupancy"], "available_suites": avail})
-            return json.dumps(data)
-
-        if name == "lease_expirations":
-            from page_calendar import _collect_contracts
-            year = inp.get("year")
-            rows = []
-            for c in _collect_contracts():
-                end = c.get("end")
-                if not end:
-                    continue
-                if year and end.year != int(year):
-                    continue
-                rows.append({"tenant": c.get("name"), "building": c.get("building"),
-                             "suite": c.get("suite"), "ends": end.isoformat()})
-            rows.sort(key=lambda r: r["ends"])
-            if not rows:
-                return "No leases match." if year else "No dated leases found."
-            return json.dumps(rows[:25])
-
-        if name == "analyze_address":
-            addr = (inp.get("address") or "").strip()
-            st.session_state["_assistant_action"] = {"type": "analyze", "address": addr}
-            return "Ready to open the analysis for {}.".format(addr)
-
-        if name == "navigate":
-            page = inp.get("page", "home")
-            st.session_state["_assistant_action"] = {"type": "navigate", "page": page}
-            return "Ready to open {}.".format(page)
-    except Exception as e:  # tools must never crash the turn
-        return "Tool error: {}".format(e)
-    return "Unknown tool."
+def _extract_after(text, triggers):
+    for t in triggers:
+        m = re.search(t + r"\s+(?:of\s+|for\s+|by\s+|de\s+|du\s+|named\s+)?(.+)", text)
+        if m:
+            return m.group(1).strip(" ?.!").strip()
+    return ""
 
 
-def _ask_claude(user_text):
-    """Run one user turn through Claude with the tool loop. Returns the reply text."""
-    import anthropic
-    key = _get_key()
-    client = anthropic.Anthropic(api_key=key)
+def parse_intent(raw):
+    """Return (reply_text, action_dict_or_None) for a spoken/typed command."""
+    text = (raw or "").strip()
+    low = text.lower()
+    if not low:
+        return "I didn't catch that, sir.", None
 
-    msgs = st.session_state.setdefault("assistant_api_msgs", [])
-    msgs.append({"role": "user", "content": user_text})
+    # 1) Owner search ─ "who owns X", "owner X", "qui possède X", "owned by X"
+    owner = _extract_after(low, [r"who owns", r"qui poss[eè]de", r"propri[ée]taire",
+                                 r"owned by", r"propri[ée]t[ée]s de", r"owner"])
+    if owner and any(k in low for k in ["own", "propri"]):
+        from utils.property_data import search_by_owner
+        res = search_by_owner(owner)
+        if not res:
+            return "I found no properties for {}, sir.".format(owner), None
+        names = ", ".join(r["address"] for r in res[:3] if r.get("address"))
+        reply = "{} owns {} propert{}. For example: {}.".format(
+            owner.upper(), len(res), "y" if len(res) == 1 else "ies", names)
+        return reply, {"type": "owner", "query": owner, "count": len(res)}
 
-    final = ""
-    for _ in range(6):  # cap tool round-trips
-        resp = client.messages.create(
-            model=ASSISTANT_MODEL, max_tokens=1024, system=SYSTEM_PROMPT,
-            tools=TOOLS, messages=msgs,
-        )
-        if resp.stop_reason == "tool_use":
-            msgs.append({"role": "assistant", "content": resp.content})
-            results = []
-            for block in resp.content:
-                if getattr(block, "type", None) == "tool_use":
-                    out = _run_tool(block.name, block.input)
-                    results.append({"type": "tool_result", "tool_use_id": block.id,
-                                    "content": out})
-            msgs.append({"role": "user", "content": results})
-            continue
-        final = "".join(getattr(b, "text", "") for b in resp.content
-                        if getattr(b, "type", None) == "text")
-        msgs.append({"role": "assistant", "content": resp.content})
-        break
+    # 2) Lease expirations ─ "leases in 2027", "baux qui finissent"
+    if any(k in low for k in ["lease", "leases", "bail", "baux", "expir", "contract"]):
+        ym = re.search(r"\b(20\d{2})\b", low)
+        year = int(ym.group(1)) if ym else None
+        from page_calendar import _collect_contracts
+        rows = [c for c in _collect_contracts() if c.get("end")]
+        if year:
+            rows = [c for c in rows if c["end"].year == year]
+        if not rows:
+            return ("No leases end in {}.".format(year) if year
+                    else "I have no dated leases on file."), None
+        rows.sort(key=lambda c: c["end"])
+        sample = "; ".join("{} ({})".format(c.get("name"), c["end"].year) for c in rows[:3])
+        when = "in {}".format(year) if year else "on record"
+        return "{} lease{} {}. Such as: {}.".format(
+            len(rows), "" if len(rows) == 1 else "s", when, sample), None
 
-    # Keep history bounded.
-    if len(msgs) > 24:
-        del msgs[:len(msgs) - 24]
-    return final or "I'm not sure how to help with that, sir."
+    # 3) Portfolio / occupancy summary
+    if any(k in low for k in ["portfolio", "occupancy", "occupation", "portefeuille",
+                              "vacant", "how many building"]):
+        from utils.buildings_inventory import get_all_buildings
+        bs = get_all_buildings()
+        if bs:
+            avg = sum(b["occupancy"] for b in bs) / len(bs)
+            rsf = sum(b["building_rsf"] for b in bs)
+            avail = sum(1 for b in bs for s in b["suites"]
+                        if s["status"] in ("vacant", "expired"))
+            return ("The portfolio has {} buildings, {:,} square feet, {:.0f}% average "
+                    "occupancy, and {} available suites.".format(len(bs), rsf, avg, avail)), None
 
+    # 4) Analyze an address ─ "analyze X", "analyse X", or a street-looking phrase
+    addr = _extract_after(low, [r"analy[sz]e?r?", r"look at", r"property at",
+                                r"adresse", r"regarde"])
+    if not addr and re.search(r"\b\d{2,6}\b.*\b(ave|avenue|st|street|road|rd|blvd|drive|dr|ter|terrace|ct|court|place|pl|way)\b", low):
+        addr = text  # the whole utterance looks like an address
+    if addr and any(k in low for k in ["analy", "look at", "property at", "adresse", "regarde"]) \
+            or (addr and re.search(r"\b\d", addr)):
+        # Re-cut from the original (preserve casing/numbers) when possible.
+        cut = _extract_after(text, [r"(?i)analy[sz]e?r?", r"(?i)look at",
+                                    r"(?i)property at", r"(?i)adresse", r"(?i)regarde"])
+        addr = cut or addr
+        return "Opening the full analysis for {}, sir.".format(addr), \
+            {"type": "analyze", "address": addr}
 
-def _get_key():
-    try:
-        if "ANTHROPIC_API_KEY" in st.secrets:
-            return st.secrets["ANTHROPIC_API_KEY"]
-    except Exception:
-        pass
-    import os
-    return os.environ.get("ANTHROPIC_API_KEY", "")
+    # 5) Navigation ─ "go to X", "open X", "ouvre X"
+    if any(k in low for k in ["go to", "open", "ouvre", "va ", "show me", "montre",
+                              "navigate", "take me"]):
+        for page, kws in _PAGES.items():
+            if any(kw in low for kw in kws):
+                return "Opening {}, sir.".format(page), {"type": "navigate", "page": page}
+
+    # 6) Greetings / help
+    if any(k in low for k in ["hello", "hey", "bonjour", "salut", "are you there"]):
+        return ("At your service, sir. Ask me to search an owner, analyze an address, "
+                "summarize the portfolio, check lease expirations, or open a section."), None
+    if any(k in low for k in ["help", "what can you", "aide", "commands"]):
+        return ("You can say: 'who owns Tristar', 'analyze 2700 NW 2 Ave', "
+                "'portfolio occupancy', 'leases in 2027', or 'open buildings'."), None
+
+    return ("I'm not certain how to help with that, sir. Try 'who owns…', 'analyze…', "
+            "'portfolio', 'leases in 2027', or 'open buildings'."), None
 
 
 # ── Voice output (free browser speech synthesis) ──────────────────────────
@@ -216,36 +186,26 @@ def render_assistant_page():
     st.markdown(
         '<div style="display:flex;align-items:center;gap:1rem;margin-bottom:0.5rem;">'
         '{logo}<div><h2 style="margin:0;color:var(--text-primary);">PATTON Assistant</h2>'
-        '<div style="font-size:0.75rem;color:var(--text-muted);">Your voice-driven real-estate co-pilot</div>'
+        '<div style="font-size:0.75rem;color:var(--text-muted);">Free voice co-pilot &mdash; no account, no key</div>'
         '</div></div>'.format(logo=logo_tag),
         unsafe_allow_html=True,
     )
 
-    if not _get_key():
-        st.warning(
-            "Voice assistant needs an Anthropic API key. Add **ANTHROPIC_API_KEY** in "
-            "your Streamlit app **Settings → Secrets** (or as an environment variable), "
-            "then reload.")
-        st.code('ANTHROPIC_API_KEY = "sk-ant-..."', language="toml")
-        return
+    _orb(st.session_state.get("_assistant_state", "idle"))
 
-    state = st.session_state.get("_assistant_state", "idle")
-    _orb(state)
-
-    # Input: mic button if available, else text.
+    # Input: free browser mic if the package is present, else type.
     user_text = None
     try:
         from streamlit_mic_recorder import speech_to_text
-        st.caption("Tap the mic and speak, or type below.")
+        st.caption("Tap the mic and speak (Chrome/Edge), or type below.")
         user_text = speech_to_text(language="en", start_prompt="🎙️ Speak to PATTON",
                                    stop_prompt="⏹ Stop", just_once=True, key="asst_stt")
     except Exception:
-        st.caption("Type your request (install streamlit-mic-recorder for voice input).")
-    typed = st.chat_input("Ask PATTON…")
+        st.caption("Type your command below. (Voice input needs the streamlit-mic-recorder package.)")
+    typed = st.chat_input("Ask PATTON… e.g. 'who owns Tristar', 'analyze 2700 NW 2 Ave'")
     if typed:
         user_text = typed
 
-    # Conversation transcript.
     history = st.session_state.setdefault("assistant_display", [])
     for m in history:
         with st.chat_message("user" if m["role"] == "user" else "assistant"):
@@ -255,23 +215,27 @@ def render_assistant_page():
         history.append({"role": "user", "text": user_text})
         with st.chat_message("user"):
             st.markdown(user_text)
-        st.session_state["_assistant_state"] = "thinking"
+        reply, action = parse_intent(user_text)
         with st.chat_message("assistant"):
-            with st.spinner("PATTON is thinking…"):
-                reply = _ask_claude(user_text)
             st.markdown(reply)
         history.append({"role": "assistant", "text": reply})
+        if len(history) > 30:
+            del history[:len(history) - 30]
         _speak(reply)
         st.session_state["_assistant_state"] = "speaking"
-
-        # Apply any action the assistant decided on.
-        action = st.session_state.pop("_assistant_action", None)
         if action:
             _render_action_button(action)
 
 
 def _render_action_button(action):
-    if action.get("type") == "analyze":
+    t = action.get("type")
+    if t == "owner":
+        if st.button("Show the {} properties →".format(action.get("count", "")),
+                     type="primary", key="asst_do_owner", use_container_width=True):
+            st.session_state["owner_query"] = action.get("query", "")
+            st.session_state["app_mode"] = "property"
+            st.rerun()
+    elif t == "analyze":
         addr = action.get("address", "")
         if st.button("Open analysis for {} →".format(addr), type="primary",
                      key="asst_do_analyze", use_container_width=True):
@@ -279,7 +243,7 @@ def _render_action_button(action):
             st.session_state["_auto_analyze"] = True
             st.session_state["app_mode"] = "property"
             st.rerun()
-    elif action.get("type") == "navigate":
+    elif t == "navigate":
         page = action.get("page", "home")
         if st.button("Open {} →".format(page.title()), type="primary",
                      key="asst_do_nav", use_container_width=True):
