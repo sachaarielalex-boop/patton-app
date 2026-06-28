@@ -124,20 +124,28 @@ def _speak(text):
         return
     import streamlit.components.v1 as components
     payload = json.dumps(text)
+    # Speak from THIS iframe's own speechSynthesis. The component runs in a sandboxed
+    # iframe, so window.parent access throws (cross-origin) and the voice never fired.
     components.html(
         "<script>"
         "var t = {payload};"
+        "var synth = window.speechSynthesis;"
         "function go() {{"
-        "  var synth = window.parent.speechSynthesis; if (!synth) return;"
-        "  var vs = synth.getVoices();"
+        "  if (!synth) return;"
+        "  var vs = synth.getVoices() || [];"
         "  var u = new SpeechSynthesisUtterance(t);"
         "  var pick = vs.find(function(v){{return /en-GB/.test(v.lang) && /(daniel|arthur|george|male)/i.test(v.name);}})"
-        "    || vs.find(function(v){{return /en-GB/.test(v.lang);}}) || vs[0];"
-        "  if (pick) u.voice = pick; u.rate = 0.97; u.pitch = 0.9;"
-        "  synth.cancel(); synth.speak(u);"
+        "    || vs.find(function(v){{return /en-GB/.test(v.lang);}})"
+        "    || vs.find(function(v){{return /^en/.test(v.lang);}}) || vs[0];"
+        "  if (pick) u.voice = pick; u.lang = (pick && pick.lang) || 'en-GB';"
+        "  u.rate = 0.97; u.pitch = 0.9;"
+        "  try {{ synth.cancel(); }} catch(e) {{}}"
+        "  synth.speak(u);"
         "}}"
-        "if (window.parent.speechSynthesis.getVoices().length) go();"
-        "else window.parent.speechSynthesis.onvoiceschanged = go;"
+        "try {{"
+        "  if (synth && synth.getVoices().length) go();"
+        "  else {{ synth.onvoiceschanged = go; setTimeout(go, 350); }}"
+        "}} catch(e) {{}}"
         "</script>".format(payload=payload),
         height=0,
     )
@@ -203,13 +211,27 @@ def render_assistant_page():
 
     # Input: free browser mic if the package is present, else type.
     user_text = None
+    mic_ok = False
     try:
         from streamlit_mic_recorder import speech_to_text
-        st.caption("Tap the mic and speak (Chrome/Edge), or type below.")
-        user_text = speech_to_text(language="en", start_prompt="🎙️ Speak to PATTON",
-                                   stop_prompt="⏹ Stop", just_once=True, key="asst_stt")
+        mic_ok = True
+        st.caption("Tap the mic and speak (Chrome/Edge), type, or click an example below.")
+        spoken = speech_to_text(language="en", start_prompt="🎙️ Speak to PATTON",
+                                stop_prompt="⏹ Stop", just_once=True, key="asst_stt")
+        if spoken:
+            user_text = spoken
     except Exception:
-        st.caption("Type your command below. (Voice input needs the streamlit-mic-recorder package.)")
+        st.caption("Type a command or click an example below. "
+                   "(Voice input arrives once the mic package finishes installing.)")
+
+    # Clickable examples — make it work instantly even without a mic.
+    examples = ["Portfolio occupancy", "Leases in 2027", "Who owns Tristar",
+                "Open buildings"]
+    ex_cols = st.columns(len(examples))
+    for i, ex in enumerate(examples):
+        if ex_cols[i].button(ex, key="asst_ex_{}".format(i), use_container_width=True):
+            user_text = ex
+
     typed = st.chat_input("Ask PATTON… e.g. 'who owns Tristar', 'analyze 2700 NW 2 Ave'")
     if typed:
         user_text = typed
