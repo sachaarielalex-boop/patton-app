@@ -27,12 +27,53 @@ _PAGES = {
 }
 
 
+_STOP_TOKENS = {"miami", "plaza", "office", "building", "buildings", "the", "de",
+                "leon", "green", "center", "tower"}
+
+
 def _extract_after(text, triggers):
     for t in triggers:
-        m = re.search(t + r"\s+(?:of\s+|for\s+|by\s+|de\s+|du\s+|named\s+)?(.+)", text)
+        m = re.search(t + r"\s+(?:of\s+|for\s+|about\s+|on\s+|by\s+|de\s+|du\s+|sur\s+|named\s+)?(.+)", text)
         if m:
             return m.group(1).strip(" ?.!").strip()
     return ""
+
+
+def _clean_numbers(text):
+    # "4,000" -> "4000" so addresses/building numbers parse.
+    return re.sub(r"(\d),(\d{3})", r"\1\2", text)
+
+
+def _match_building(text):
+    """Return a portfolio building whose name is referenced in the text, else None."""
+    try:
+        from utils.buildings_inventory import get_all_buildings
+        buildings = get_all_buildings()
+    except Exception:
+        return None
+    low = _clean_numbers(text.lower())
+    best = None
+    for b in buildings:
+        name = b["name"].lower()
+        if name in low:
+            return b
+        for tok in re.split(r"\s+", name):
+            tok = tok.strip()
+            # distinctive token: a number (e.g. 4000) or a word not in the stoplist
+            if (tok.isdigit() and len(tok) >= 3 and tok in low) or \
+               (len(tok) >= 5 and tok not in _STOP_TOKENS and re.search(r"\b" + re.escape(tok) + r"\b", low)):
+                best = b
+    return best
+
+
+def _building_reply(b):
+    avail = sum(1 for s in b["suites"] if s["status"] in ("vacant", "expired"))
+    return ("{name}: a {cls} building at {addr} in {sub}, {floors} floors, built {yr}. "
+            "{rsf:,} square feet, {occ}% occupied, {av} suite{p} available.").format(
+        name=b["name"], cls=b.get("building_class", ""), addr=b.get("address", ""),
+        sub=b.get("submarket", ""), floors=b.get("floors", ""), yr=b.get("year_built", ""),
+        rsf=b.get("building_rsf", 0), occ=b.get("occupancy", 0), av=avail,
+        p="" if avail == 1 else "s")
 
 
 def parse_intent(raw):
@@ -54,6 +95,23 @@ def parse_intent(raw):
         reply = "{} owns {} propert{}. For example: {}.".format(
             owner.upper(), len(res), "y" if len(res) == 1 else "ies", names)
         return reply, {"type": "owner", "query": owner, "count": len(res)}
+
+    # 2) "information about X" / "tell me about X" / a portfolio building name
+    info_target = _extract_after(low, [r"all info(?:rmation)?", r"info(?:rmation)?",
+                                       r"tell me about", r"details?", r"renseignements?",
+                                       r"parle[- ]?moi de", r"tout sur"])
+    # A portfolio building referenced anywhere → give building details.
+    bldg = _match_building(text)
+    if bldg:
+        return _building_reply(bldg), {"type": "navigate", "page": "buildings"}
+    # Otherwise, if they asked about something with a street number → analyze it.
+    if info_target and re.search(r"\d", info_target):
+        cased = _extract_after(text, [r"(?i)all info(?:rmation)?", r"(?i)info(?:rmation)?",
+                                      r"(?i)tell me about", r"(?i)details?",
+                                      r"(?i)tout sur", r"(?i)parle[- ]?moi de"])
+        addr = _clean_numbers(cased or info_target)
+        return "Opening the full analysis for {}, sir.".format(addr), \
+            {"type": "analyze", "address": addr}
 
     # 2) Lease expirations ─ "leases in 2027", "baux qui finissent"
     if any(k in low for k in ["lease", "leases", "bail", "baux", "expir", "contract"]):
