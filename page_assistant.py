@@ -209,28 +209,29 @@ def render_assistant_page():
 
     _orb(st.session_state.get("_assistant_state", "idle"))
 
-    # Input: free browser mic if the package is present, else type.
     user_text = None
-    mic_ok = False
-    try:
-        from streamlit_mic_recorder import speech_to_text
-        mic_ok = True
-        st.caption("Tap the mic and speak (Chrome/Edge), type, or click an example below.")
-        spoken = speech_to_text(language="en", start_prompt="🎙️ Speak to PATTON",
-                                stop_prompt="⏹ Stop", just_once=True, key="asst_stt")
-        if spoken:
-            user_text = spoken
-    except Exception:
-        st.caption("Type a command or click an example below. "
-                   "(Voice input arrives once the mic package finishes installing.)")
 
-    # Clickable examples — make it work instantly even without a mic.
+    # 1) Reliable input: clickable examples + typing (these always work).
+    st.markdown("**Try a command** — click one, or type below:")
     examples = ["Portfolio occupancy", "Leases in 2027", "Who owns Tristar",
                 "Open buildings"]
     ex_cols = st.columns(len(examples))
     for i, ex in enumerate(examples):
         if ex_cols[i].button(ex, key="asst_ex_{}".format(i), use_container_width=True):
             user_text = ex
+
+    # 2) Optional voice input (browser speech recognition is hit-or-miss).
+    with st.expander("🎙️ Voice input (experimental — Chrome/Edge)", expanded=False):
+        try:
+            from streamlit_mic_recorder import speech_to_text
+            spoken = speech_to_text(language="en-US", start_prompt="🎙️ Speak",
+                                    stop_prompt="⏹ Stop", just_once=True, key="asst_stt")
+            if spoken:
+                user_text = spoken
+            st.caption("Speak a command, then it appears as text. If it mishears you, "
+                       "use the buttons or type instead.")
+        except Exception:
+            st.caption("Voice input is still installing — use the buttons or type for now.")
 
     typed = st.chat_input("Ask PATTON… e.g. 'who owns Tristar', 'analyze 2700 NW 2 Ave'")
     if typed:
@@ -245,9 +246,12 @@ def render_assistant_page():
         history.append({"role": "user", "text": user_text})
         with st.chat_message("user"):
             st.markdown(user_text)
-        reply, action = parse_intent(user_text)
+        try:
+            reply, action = parse_intent(user_text)
+        except Exception as e:
+            reply, action = "Sorry sir, I hit a snag: {}".format(e), None
         with st.chat_message("assistant"):
-            st.markdown(reply)
+            st.markdown("### {}".format(reply))
         history.append({"role": "assistant", "text": reply})
         if len(history) > 30:
             del history[:len(history) - 30]
